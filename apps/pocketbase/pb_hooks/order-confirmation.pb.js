@@ -19,6 +19,6 @@ onRecordCreate((e) => {
   
   e.record.set("orderNumber", orderNumber);
   e.record.set("paymentStatus", "PENDIENTE");
-  e.record.set("orderStatus", "PENDIENTE");
+  e.record.set("orderStatus", "Pendiente");
   e.next();
 }, "orders");
