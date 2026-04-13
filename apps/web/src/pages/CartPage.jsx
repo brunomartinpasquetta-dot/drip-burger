@@ -335,7 +335,7 @@ const CartPage = () => {
                     </SelectTrigger>
                     <SelectContent className="bg-card border-border">
                       <SelectItem value="Efectivo" className="font-bold uppercase focus:bg-primary/20 focus:text-primary">Efectivo al recibir</SelectItem>
-                      <SelectItem value="Transferencia" className="font-bold uppercase focus:bg-primary/20 focus:text-primary">Transferencia</SelectItem>
+                      <SelectItem value="Transferencia" disabled className="font-bold uppercase opacity-50 cursor-not-allowed">Transferencia (próximamente)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

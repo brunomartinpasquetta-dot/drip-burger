@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useCart } from '@/contexts/CartContext.jsx';
 import pb from '@/lib/pocketbaseClient';
 import { Button } from '@/components/ui/button';
@@ -15,11 +15,6 @@ const ProductCard = ({ product }) => {
   const { addToCart } = useCart();
   const [pattyCount, setPattyCount] = useState(1);
   const [imgError, setImgError] = useState(false);
-
-  useEffect(() => {
-    console.log('[ProductCard] Rendering product:', product?.name);
-    console.log('[ProductCard] Data structure:', product);
-  }, [product]);
 
   // Safe fallbacks to ensure no rendering errors occur when product data is missing fields
   const safeProduct = product || {};

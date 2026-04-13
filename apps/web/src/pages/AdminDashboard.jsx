@@ -225,8 +225,9 @@ const AdminDashboard = () => {
   const handleSendWhatsApp = async (order) => {
     try {
       await pb.collection('orders').update(order.id, { orderStatus: 'En camino' }, { $autoCancel: false });
+      let whatsappOk = true;
       try {
-        await apiServerClient.fetch('/orders/send-whatsapp', {
+        const res = await apiServerClient.fetch('/orders/send-whatsapp', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -236,10 +237,15 @@ const AdminDashboard = () => {
             deliveryTimeSlot: order.deliveryTimeSlot
           })
         });
+        if (!res.ok) whatsappOk = false;
       } catch (e) {
-        console.error('WhatsApp notification error ignored:', e);
+        whatsappOk = false;
       }
-      toast.success('Pedido marcado como En camino y WhatsApp enviado');
+      if (whatsappOk) {
+        toast.success('Pedido marcado como En camino y WhatsApp enviado');
+      } else {
+        toast.warning('Pedido marcado En camino, pero falló la notificación WhatsApp');
+      }
       loadData();
     } catch (error) {
       toast.error('Error al actualizar el pedido');
