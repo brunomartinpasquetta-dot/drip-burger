@@ -50,6 +50,9 @@ const PaymentBadge = ({ method }) => {
 };
 
 // ── Vista COCINA: productos agrupados por turno ───────────────────
+const BURGER_NAMES = ['BACON DRIP', 'OG DRIP', 'DIRTY DRIP'];
+const MEDALLION_LABELS = { 1: 'Simple', 2: 'Doble', 3: 'Triple' };
+
 const KitchenView = ({ orders }) => {
   const [selectedSlot, setSelectedSlot] = useState('all');
 
@@ -58,18 +61,19 @@ const KitchenView = ({ orders }) => {
     ? activeOrders
     : activeOrders.filter(o => o.deliveryTimeSlot === selectedSlot);
 
-  // Agrupar items por nombre de producto
+  // Agrupar por producto → por cantidad de medallones
   const productMap = {};
+  let papasTotal = 0;
   filtered.forEach(order => {
     (order.items || []).forEach(item => {
-      const key = item.productName;
-      if (!productMap[key]) productMap[key] = { total: 0, breakdown: [] };
-      productMap[key].total += item.quantity;
-      productMap[key].breakdown.push({
-        orderNum: order.orderNumber,
-        qty: item.quantity,
-        pattyCount: item.pattyCount,
-      });
+      const name = item.productName;
+      if (!productMap[name]) productMap[name] = { total: 0, byPatty: {} };
+      productMap[name].total += item.quantity;
+      productMap[name].byPatty[item.pattyCount] =
+        (productMap[name].byPatty[item.pattyCount] || 0) + item.quantity;
+      if (BURGER_NAMES.includes(name)) {
+        papasTotal += item.quantity;
+      }
     });
   });
 
@@ -77,6 +81,8 @@ const KitchenView = ({ orders }) => {
   TIME_SLOTS.forEach(slot => {
     slotCounts[slot] = activeOrders.filter(o => o.deliveryTimeSlot === slot).length;
   });
+
+  const hasItems = Object.keys(productMap).length > 0;
 
   return (
     <div className="space-y-6">
@@ -101,7 +107,7 @@ const KitchenView = ({ orders }) => {
         ))}
       </div>
 
-      {Object.keys(productMap).length === 0 ? (
+      {!hasItems ? (
         <Card className="bg-card border-border">
           <CardContent className="py-16 text-center">
             <ChefHat className="w-12 h-12 mx-auto mb-4 text-muted-foreground/30" />
@@ -110,26 +116,49 @@ const KitchenView = ({ orders }) => {
         </Card>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {Object.entries(productMap).map(([productName, data]) => (
-            <Card key={productName} className="bg-card border-border overflow-hidden">
-              <CardHeader className="bg-primary/10 border-b border-border py-4 px-5">
-                <div className="flex justify-between items-center">
+          {Object.entries(productMap).map(([productName, data]) => {
+            const isBurger = BURGER_NAMES.includes(productName);
+            return (
+              <Card key={productName} className="bg-card border-border overflow-hidden">
+                <CardHeader className="bg-primary/10 border-b border-border py-4 px-5">
                   <CardTitle className="text-lg font-black uppercase tracking-tight text-primary">
                     {productName}
                   </CardTitle>
-                  <span className="text-4xl font-black text-white">{data.total}</span>
-                </div>
+                </CardHeader>
+                <CardContent className="p-4 space-y-2">
+                  {isBurger
+                    ? [1, 2, 3].map(p => data.byPatty[p] ? (
+                        <div key={p} className="flex justify-between items-baseline text-base font-bold">
+                          <span className="text-foreground uppercase tracking-wide">{MEDALLION_LABELS[p]}</span>
+                          <span className="text-2xl font-black text-white">× {data.byPatty[p]}</span>
+                        </div>
+                      ) : null)
+                    : (
+                      <div className="flex justify-between items-baseline text-base font-bold">
+                        <span className="text-foreground uppercase tracking-wide">Total</span>
+                        <span className="text-2xl font-black text-white">× {data.total}</span>
+                      </div>
+                    )}
+                </CardContent>
+              </Card>
+            );
+          })}
+
+          {papasTotal > 0 && (
+            <Card className="bg-card border-yellow-500/40 overflow-hidden">
+              <CardHeader className="bg-yellow-500/10 border-b border-yellow-500/30 py-4 px-5">
+                <CardTitle className="text-lg font-black uppercase tracking-tight text-yellow-400">
+                  🍟 Papas Fritas
+                </CardTitle>
               </CardHeader>
-              <CardContent className="p-4 space-y-2">
-                {data.breakdown.map((b, idx) => (
-                  <div key={idx} className="flex justify-between text-xs text-muted-foreground border-b border-border/30 pb-1">
-                    <span className="font-bold">#{b.orderNum}</span>
-                    <span>{b.qty} × {b.pattyCount}p</span>
-                  </div>
-                ))}
+              <CardContent className="p-4">
+                <div className="flex justify-between items-baseline text-base font-bold">
+                  <span className="text-foreground uppercase tracking-wide">Total</span>
+                  <span className="text-2xl font-black text-white">{papasTotal} porciones</span>
+                </div>
               </CardContent>
             </Card>
-          ))}
+          )}
         </div>
       )}
     </div>
