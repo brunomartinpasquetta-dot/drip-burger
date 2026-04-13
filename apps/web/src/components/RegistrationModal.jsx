@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,6 +11,14 @@ const RegistrationModal = ({ isOpen, onClose, onSuccess, checkoutData }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setEmail('');
+      setPassword('');
+      setLoading(false);
+    }
+  }, [isOpen]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();

@@ -71,7 +71,8 @@ const ConfirmationPage = () => {
   }
 
   const shipping = order.precio_envio_snapshot || 0;
-  const itemsTotal = order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+  const items = order.items || [];
+  const itemsTotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
   return (
     <>
@@ -135,7 +136,7 @@ const ConfirmationPage = () => {
                 </div>
 
                 <div className="space-y-4 mb-6">
-                  {order.items.map((item, idx) => (
+                  {items.map((item, idx) => (
                     <div key={idx} className="flex justify-between items-start text-sm">
                       <div>
                         <p className="font-bold uppercase">{item.productName}</p>

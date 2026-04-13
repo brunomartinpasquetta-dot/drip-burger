@@ -24,7 +24,7 @@ const LoginPage = () => {
     setLoading(true);
 
     try {
-      const user = await login(formData.email, formData.password);
+      const user = await login(formData.email, formData.password, true);
       toast.success('Ingreso exitoso');
       
       if (user.role === 'ADMIN') {

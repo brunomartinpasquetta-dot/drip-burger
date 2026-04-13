@@ -80,7 +80,8 @@ const OrderHistoryPage = () => {
             <div className="space-y-6">
               {orders.map((order) => {
                 const shipping = order.precio_envio_snapshot || 0;
-                const itemsTotal = order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+                const orderItems = order.items || [];
+                const itemsTotal = orderItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
                 const orderDate = new Date(order.created);
 
                 return (
@@ -112,7 +113,7 @@ const OrderHistoryPage = () => {
                         <div>
                           <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">Detalle</p>
                           <div className="space-y-3">
-                            {order.items.map((item, idx) => (
+                            {orderItems.map((item, idx) => (
                               <div key={idx} className="flex justify-between items-start text-sm">
                                 <div>
                                   <span className="font-bold uppercase">{item.productName}</span>

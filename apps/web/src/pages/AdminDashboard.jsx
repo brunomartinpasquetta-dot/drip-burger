@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import pb from '@/lib/pocketbaseClient';
 import apiServerClient from '@/lib/apiServerClient';
+import { ORDER_STATUS, PAYMENT_STATUS } from '@/lib/orderConstants';
 import Header from '@/components/Header.jsx';
 import ProductForm from '@/components/ProductForm.jsx';
 import ImageUploadButton from '@/components/ImageUploadButton.jsx';
@@ -56,7 +57,7 @@ const MEDALLION_LABELS = { 1: 'Simple', 2: 'Doble', 3: 'Triple' };
 const KitchenView = ({ orders }) => {
   const [selectedSlot, setSelectedSlot] = useState('all');
 
-  const activeOrders = orders.filter(o => o.orderStatus !== 'Finalizado');
+  const activeOrders = orders.filter(o => o.orderStatus !== ORDER_STATUS.COMPLETED);
   const filtered = selectedSlot === 'all'
     ? activeOrders
     : activeOrders.filter(o => o.deliveryTimeSlot === selectedSlot);
@@ -178,6 +179,27 @@ const AdminDashboard = () => {
     paymentMethod: 'all',
     status: 'all'
   });
+  const [pendingIds, setPendingIds] = useState(() => new Set());
+  const navigate = useNavigate();
+
+  const isPending = (key) => pendingIds.has(key);
+  const markPending = (key, pending) => {
+    setPendingIds(prev => {
+      const next = new Set(prev);
+      if (pending) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  };
+
+  const requireAuth = () => {
+    if (!pb.authStore.isValid) {
+      toast.error('Sesión expirada. Iniciá sesión de nuevo.');
+      navigate('/login');
+      return false;
+    }
+    return true;
+  };
 
   useEffect(() => { loadData(); }, []);
 
@@ -188,7 +210,6 @@ const AdminDashboard = () => {
         pb.collection('users').getFullList({ filter: 'role = "CUSTOMER"', sort: 'name', requestKey: null }),
         pb.collection('orders').getFullList({ sort: '-created', requestKey: null })
       ]);
-      console.log('[loadData] orders loaded:', ordersData.length, 'sample:', ordersData[0]);
       setProducts(productsData);
       setCustomers(customersData);
       setOrders(ordersData);
@@ -210,13 +231,18 @@ const AdminDashboard = () => {
   };
 
   const handleDeleteProduct = async (id) => {
+    if (!requireAuth()) return;
     if (!window.confirm('¿Eliminar este producto definitivamente?')) return;
+    const key = `prod-${id}`;
+    markPending(key, true);
     try {
       await pb.collection('products').delete(id, { requestKey: null });
       toast.success('Producto eliminado');
       loadData();
     } catch (error) {
       toast.error('Error al eliminar el producto');
+    } finally {
+      markPending(key, false);
     }
   };
 
@@ -232,27 +258,32 @@ const AdminDashboard = () => {
   };
 
   const handleUpdateOrderStatus = async (orderId, status) => {
+    if (!requireAuth()) return;
+    markPending(orderId, true);
     try {
-      await pb.collection('orders').update(orderId, { orderStatus: status }, { requestKey: null });
+      const updated = await pb.collection('orders').update(orderId, { orderStatus: status }, { requestKey: null });
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...updated } : o));
       toast.success(`Pedido actualizado a ${status}`);
-      loadData();
     } catch (error) {
-      toast.error('Error al actualizar el pedido');
+      console.error('[handleUpdateOrderStatus] failed:', { orderId, status: error?.status, data: error?.response?.data });
+      toast.error(`Error al actualizar el pedido (${error?.status || 'sin status'})`);
+    } finally {
+      markPending(orderId, false);
     }
   };
 
   // Marcar como pagado manualmente (efectivo)
   const handleMarkPaid = async (orderId) => {
-    console.log('[handleMarkPaid] orderId:', orderId, 'type:', typeof orderId);
     if (!orderId) {
-      console.error('[handleMarkPaid] orderId is missing, aborting');
       toast.error('Error: ID del pedido no disponible');
       return;
     }
+    if (!requireAuth()) return;
+    markPending(orderId, true);
     try {
       const updated = await pb.collection('orders').update(
         orderId,
-        { paymentStatus: 'Pagado' },
+        { paymentStatus: PAYMENT_STATUS.PAID },
         { requestKey: null }
       );
       setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...updated } : o));
@@ -263,15 +294,19 @@ const AdminDashboard = () => {
         status: error?.status,
         url: error?.url,
         data: error?.response?.data,
-        raw: error,
       });
       toast.error(`Error al marcar como pagado (${error?.status || 'sin status'})`);
+    } finally {
+      markPending(orderId, false);
     }
   };
 
   const handleSendWhatsApp = async (order) => {
+    if (!requireAuth()) return;
+    markPending(order.id, true);
     try {
-      await pb.collection('orders').update(order.id, { orderStatus: 'En camino' }, { requestKey: null });
+      const updated = await pb.collection('orders').update(order.id, { orderStatus: ORDER_STATUS.IN_TRANSIT }, { requestKey: null });
+      setOrders(prev => prev.map(o => o.id === order.id ? { ...o, ...updated } : o));
       let whatsappOk = true;
       try {
         const res = await apiServerClient.fetch('/orders/send-whatsapp', {
@@ -280,7 +315,7 @@ const AdminDashboard = () => {
           body: JSON.stringify({
             orderId: order.id,
             customerPhone: order.customerPhone,
-            customerName: order.customerName.split(' ')[0],
+            customerName: order.customerName?.split(' ')?.[0] || 'Cliente',
             deliveryTimeSlot: order.deliveryTimeSlot
           })
         });
@@ -293,9 +328,11 @@ const AdminDashboard = () => {
       } else {
         toast.warning('Pedido marcado En camino, pero falló la notificación WhatsApp');
       }
-      loadData();
     } catch (error) {
-      toast.error('Error al actualizar el pedido');
+      console.error('[handleSendWhatsApp] failed:', { orderId: order.id, status: error?.status, data: error?.response?.data });
+      toast.error(`Error al actualizar el pedido (${error?.status || 'sin status'})`);
+    } finally {
+      markPending(order.id, false);
     }
   };
 
@@ -333,9 +370,9 @@ const AdminDashboard = () => {
           <Tabs defaultValue="orders" className="space-y-8">
             <TabsList className="bg-card border border-border p-1 h-auto flex flex-wrap">
               <TabsTrigger value="orders" className="font-bold uppercase tracking-wide py-3 px-6 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground flex-1 sm:flex-none">
-                Pedidos {orders.filter(o => o.orderStatus === 'Pendiente' || !o.orderStatus).length > 0 && (
+                Pedidos {orders.filter(o => o.orderStatus === ORDER_STATUS.PENDING || !o.orderStatus).length > 0 && (
                   <span className="ml-2 bg-yellow-500 text-black text-xs rounded-full px-2 py-0.5">
-                    {orders.filter(o => o.orderStatus === 'Pendiente' || !o.orderStatus).length}
+                    {orders.filter(o => o.orderStatus === ORDER_STATUS.PENDING || !o.orderStatus).length}
                   </span>
                 )}
               </TabsTrigger>
@@ -402,7 +439,7 @@ const AdminDashboard = () => {
                   {filteredOrders.map(order => {
                     const shipping = order.precio_envio_snapshot || 0;
                     const itemsTotal = (order.items || []).reduce((sum, item) => sum + (item.price * item.quantity), 0);
-                    const isPaid = order.paymentMethod === 'Transferencia' || order.paymentStatus === 'Pagado';
+                    const isPaid = order.paymentMethod === 'Transferencia' || order.paymentStatus === PAYMENT_STATUS.PAID;
 
                     return (
                       <Card key={order.id} className="bg-card border-border overflow-hidden shadow-sm">
@@ -476,32 +513,39 @@ const AdminDashboard = () => {
                               {/* Marcar pagado manualmente si es efectivo y no está pagado */}
                               {order.paymentMethod === 'Efectivo' && !isPaid && (
                                 <Button
-                                  onClick={() => {
-                                    console.log('[Cobrado click] order:', order);
-                                    handleMarkPaid(order.id);
-                                  }}
+                                  onClick={() => handleMarkPaid(order.id)}
+                                  disabled={isPending(order.id)}
                                   variant="outline"
                                   className="w-full border-green-500/50 text-green-400 hover:bg-green-500/10"
                                 >
                                   <Banknote className="mr-2 h-4 w-4" />
-                                  Cobrado
+                                  {isPending(order.id) ? 'Procesando...' : 'Cobrado'}
                                 </Button>
                               )}
                               {/* Enviar WhatsApp + marcar En camino */}
-                              {(!order.orderStatus || order.orderStatus === 'Pendiente') && (
-                                <Button onClick={() => handleSendWhatsApp(order)} className="btn-primary w-full shadow-md">
+                              {(!order.orderStatus || order.orderStatus === ORDER_STATUS.PENDING) && (
+                                <Button
+                                  onClick={() => handleSendWhatsApp(order)}
+                                  disabled={isPending(order.id)}
+                                  className="btn-primary w-full shadow-md"
+                                >
                                   <Send className="mr-2 h-4 w-4" />
-                                  En Camino + WA
+                                  {isPending(order.id) ? 'Enviando...' : 'En Camino + WA'}
                                 </Button>
                               )}
                               {/* Finalizar */}
-                              {order.orderStatus === 'En camino' && (
-                                <Button onClick={() => handleUpdateOrderStatus(order.id, 'Finalizado')} variant="outline" className="btn-secondary w-full">
+                              {order.orderStatus === ORDER_STATUS.IN_TRANSIT && (
+                                <Button
+                                  onClick={() => handleUpdateOrderStatus(order.id, ORDER_STATUS.COMPLETED)}
+                                  disabled={isPending(order.id)}
+                                  variant="outline"
+                                  className="btn-secondary w-full"
+                                >
                                   <CheckCircle2 className="mr-2 h-4 w-4" />
-                                  Finalizar
+                                  {isPending(order.id) ? 'Procesando...' : 'Finalizar'}
                                 </Button>
                               )}
-                              {order.orderStatus === 'Finalizado' && (
+                              {order.orderStatus === ORDER_STATUS.COMPLETED && (
                                 <span className="text-xs text-green-500 font-bold uppercase text-center">✓ Entregado</span>
                               )}
                             </div>
@@ -598,7 +642,8 @@ const AdminDashboard = () => {
                                   <Pencil className="h-3 w-3" />
                                 </Button>
                                 <Button variant="outline" size="sm" className="border-destructive/50 text-destructive hover:bg-destructive/10 h-8"
-                                  onClick={() => handleDeleteProduct(product.id)}>
+                                  onClick={() => handleDeleteProduct(product.id)}
+                                  disabled={isPending(`prod-${product.id}`)}>
                                   <Trash2 className="h-3 w-3" />
                                 </Button>
                               </div>
