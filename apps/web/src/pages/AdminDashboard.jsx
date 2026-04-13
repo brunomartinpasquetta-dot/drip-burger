@@ -188,6 +188,7 @@ const AdminDashboard = () => {
         pb.collection('users').getFullList({ filter: 'role = "CUSTOMER"', sort: 'name', requestKey: null }),
         pb.collection('orders').getFullList({ sort: '-created', requestKey: null })
       ]);
+      console.log('[loadData] orders loaded:', ordersData.length, 'sample:', ordersData[0]);
       setProducts(productsData);
       setCustomers(customersData);
       setOrders(ordersData);
@@ -242,6 +243,12 @@ const AdminDashboard = () => {
 
   // Marcar como pagado manualmente (efectivo)
   const handleMarkPaid = async (orderId) => {
+    console.log('[handleMarkPaid] orderId:', orderId, 'type:', typeof orderId);
+    if (!orderId) {
+      console.error('[handleMarkPaid] orderId is missing, aborting');
+      toast.error('Error: ID del pedido no disponible');
+      return;
+    }
     try {
       const updated = await pb.collection('orders').update(
         orderId,
@@ -251,8 +258,14 @@ const AdminDashboard = () => {
       setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...updated } : o));
       toast.success('Pedido marcado como pagado');
     } catch (error) {
-      console.error('handleMarkPaid failed:', error?.response?.data || error);
-      toast.error('Error al marcar como pagado');
+      console.error('[handleMarkPaid] failed:', {
+        orderId,
+        status: error?.status,
+        url: error?.url,
+        data: error?.response?.data,
+        raw: error,
+      });
+      toast.error(`Error al marcar como pagado (${error?.status || 'sin status'})`);
     }
   };
 
@@ -463,7 +476,10 @@ const AdminDashboard = () => {
                               {/* Marcar pagado manualmente si es efectivo y no está pagado */}
                               {order.paymentMethod === 'Efectivo' && !isPaid && (
                                 <Button
-                                  onClick={() => handleMarkPaid(order.id)}
+                                  onClick={() => {
+                                    console.log('[Cobrado click] order:', order);
+                                    handleMarkPaid(order.id);
+                                  }}
                                   variant="outline"
                                   className="w-full border-green-500/50 text-green-400 hover:bg-green-500/10"
                                 >
