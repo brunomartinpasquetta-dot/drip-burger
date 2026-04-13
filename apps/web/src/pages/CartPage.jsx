@@ -94,7 +94,6 @@ const CartPage = () => {
       const totalAmount = subtotal + shippingPrice;
 
       const orderData = {
-        orderNumber: `ORD-${Math.floor(10000 + Math.random() * 90000)}`,
         nombre_apellido: nombreCompleto,
         telefono: formData.telefono,
         direccion: formData.direccion,
