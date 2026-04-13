@@ -3,7 +3,7 @@ dotenv.config();
 import Pocketbase from 'pocketbase';
 import logger from './logger.js';
 
-const POCKETBASE_HOST = `https://${process.env.WEBSITE_DOMAIN}/hcgi/platform`;
+const POCKETBASE_HOST = process.env.POCKETBASE_URL || 'http://localhost:8090';
 
 async function waitForHealth({ retries = 10, delayMs = 1000 } = {}) {
     for (let i = 1; i <= retries; i++) {
@@ -55,25 +55,25 @@ pocketbaseClient.beforeSend = async function (url, options) {
 (async () => {
     try {
         await waitForHealth();
-
-        if (!pocketbaseClient.authStore.isValid && !authPromise) {
-            authPromise = pocketbaseClient.collection('_superusers').authWithPassword(
-                process.env.PB_SUPERUSER_EMAIL,
-                process.env.PB_SUPERUSER_PASSWORD,
-            ).finally(() => {
-                authPromise = null;
-            });
-        }
-        
-        if (authPromise) {
-            await authPromise;
-        }
-        
-        logger.info('PocketBase client initialized successfully');
+        logger.info(`PocketBase reachable at ${POCKETBASE_HOST}`);
     } catch (err) {
-        logger.error('Failed to initialize PocketBase client:', err);
+        logger.warn(`PocketBase health check failed: ${err.message}. API will start anyway; endpoints that need PB will fail lazily.`);
+        return;
+    }
 
-        process.exit(1);
+    if (!process.env.PB_SUPERUSER_EMAIL || !process.env.PB_SUPERUSER_PASSWORD) {
+        logger.warn('PB_SUPERUSER_EMAIL/PB_SUPERUSER_PASSWORD not set. Endpoints that require PB auth will fail.');
+        return;
+    }
+
+    try {
+        await pocketbaseClient.collection('_superusers').authWithPassword(
+            process.env.PB_SUPERUSER_EMAIL,
+            process.env.PB_SUPERUSER_PASSWORD,
+        );
+        logger.info('PocketBase superuser authenticated');
+    } catch (err) {
+        logger.warn(`PocketBase superuser auth failed: ${err.message}`);
     }
 })();
 

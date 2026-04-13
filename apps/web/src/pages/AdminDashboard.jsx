@@ -304,36 +304,56 @@ const AdminDashboard = () => {
   const handleSendWhatsApp = async (order) => {
     if (!requireAuth()) return;
     markPending(order.id, true);
+
+    // Step 1: update order status in PocketBase (critical — if this fails, nothing else happens)
+    let updated;
     try {
-      const updated = await pb.collection('orders').update(order.id, { orderStatus: ORDER_STATUS.IN_TRANSIT }, { requestKey: null });
+      updated = await pb.collection('orders').update(
+        order.id,
+        { orderStatus: ORDER_STATUS.IN_TRANSIT },
+        { requestKey: null }
+      );
       setOrders(prev => prev.map(o => o.id === order.id ? { ...o, ...updated } : o));
-      let whatsappOk = true;
-      try {
-        const res = await apiServerClient.fetch('/orders/send-whatsapp', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            orderId: order.id,
-            customerPhone: order.customerPhone,
-            customerName: order.customerName?.split(' ')?.[0] || 'Cliente',
-            deliveryTimeSlot: order.deliveryTimeSlot
-          })
-        });
-        if (!res.ok) whatsappOk = false;
-      } catch (e) {
-        whatsappOk = false;
-      }
-      if (whatsappOk) {
-        toast.success('Pedido marcado como En camino y WhatsApp enviado');
-      } else {
-        toast.warning('Pedido marcado En camino, pero falló la notificación WhatsApp');
-      }
     } catch (error) {
-      console.error('[handleSendWhatsApp] failed:', { orderId: order.id, status: error?.status, data: error?.response?.data });
+      console.error('[handleSendWhatsApp] order update failed:', { orderId: order.id, status: error?.status, data: error?.response?.data });
       toast.error(`Error al actualizar el pedido (${error?.status || 'sin status'})`);
-    } finally {
       markPending(order.id, false);
+      return;
     }
+
+    // Step 2: send WhatsApp notification (best-effort — never blocks the order flow)
+    let notificationState = 'failed'; // 'sent' | 'not_configured' | 'failed'
+    try {
+      const res = await apiServerClient.fetch('/orders/send-whatsapp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: order.id,
+          customerPhone: order.customerPhone,
+          customerName: order.customerName?.split(' ')?.[0] || 'Cliente',
+          deliveryTimeSlot: order.deliveryTimeSlot
+        })
+      });
+      if (res.ok) {
+        const body = await res.json().catch(() => ({}));
+        if (body.messageSent === true) {
+          notificationState = 'sent';
+        } else if (body.reason === 'Credenciales no configuradas') {
+          notificationState = 'not_configured';
+        }
+      }
+    } catch (e) {
+      console.error('[handleSendWhatsApp] notification failed:', e);
+    }
+
+    if (notificationState === 'sent') {
+      toast.success('Pedido marcado como En camino y WhatsApp enviado');
+    } else if (notificationState === 'not_configured') {
+      toast.warning('Pedido marcado En camino. WhatsApp no configurado.');
+    } else {
+      toast.warning('Pedido marcado En camino, pero falló la notificación WhatsApp');
+    }
+    markPending(order.id, false);
   };
 
   const filteredOrders = orders.filter(order => {
