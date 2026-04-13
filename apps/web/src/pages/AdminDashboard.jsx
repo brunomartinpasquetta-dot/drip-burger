@@ -184,9 +184,9 @@ const AdminDashboard = () => {
   const loadData = async () => {
     try {
       const [productsData, customersData, ordersData] = await Promise.all([
-        pb.collection('products').getFullList({ sort: 'name', $autoCancel: false }),
-        pb.collection('users').getFullList({ filter: 'role = "CUSTOMER"', sort: 'name', $autoCancel: false }),
-        pb.collection('orders').getFullList({ sort: '-created', $autoCancel: false })
+        pb.collection('products').getFullList({ sort: 'name', requestKey: null }),
+        pb.collection('users').getFullList({ filter: 'role = "CUSTOMER"', sort: 'name', requestKey: null }),
+        pb.collection('orders').getFullList({ sort: '-created', requestKey: null })
       ]);
       setProducts(productsData);
       setCustomers(customersData);
@@ -200,7 +200,7 @@ const AdminDashboard = () => {
 
   const handleToggleProductStatus = async (id, currentStatus) => {
     try {
-      await pb.collection('products').update(id, { available: !currentStatus }, { $autoCancel: false });
+      await pb.collection('products').update(id, { available: !currentStatus }, { requestKey: null });
       setProducts(products.map(p => p.id === id ? { ...p, available: !currentStatus } : p));
       toast.success(`Producto ${!currentStatus ? 'activado' : 'desactivado'}`);
     } catch (error) {
@@ -211,7 +211,7 @@ const AdminDashboard = () => {
   const handleDeleteProduct = async (id) => {
     if (!window.confirm('¿Eliminar este producto definitivamente?')) return;
     try {
-      await pb.collection('products').delete(id, { $autoCancel: false });
+      await pb.collection('products').delete(id, { requestKey: null });
       toast.success('Producto eliminado');
       loadData();
     } catch (error) {
@@ -222,7 +222,7 @@ const AdminDashboard = () => {
   const handleDeleteCustomer = async (id) => {
     if (!window.confirm('¿Eliminar este cliente?')) return;
     try {
-      await pb.collection('users').delete(id, { $autoCancel: false });
+      await pb.collection('users').delete(id, { requestKey: null });
       toast.success('Cliente eliminado');
       loadData();
     } catch (error) {
@@ -232,7 +232,7 @@ const AdminDashboard = () => {
 
   const handleUpdateOrderStatus = async (orderId, status) => {
     try {
-      await pb.collection('orders').update(orderId, { orderStatus: status }, { $autoCancel: false });
+      await pb.collection('orders').update(orderId, { orderStatus: status }, { requestKey: null });
       toast.success(`Pedido actualizado a ${status}`);
       loadData();
     } catch (error) {
@@ -243,17 +243,22 @@ const AdminDashboard = () => {
   // Marcar como pagado manualmente (efectivo)
   const handleMarkPaid = async (orderId) => {
     try {
-      await pb.collection('orders').update(orderId, { paymentStatus: 'Pagado' }, { $autoCancel: false });
+      const updated = await pb.collection('orders').update(
+        orderId,
+        { paymentStatus: 'Pagado' },
+        { requestKey: null }
+      );
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...updated } : o));
       toast.success('Pedido marcado como pagado');
-      loadData();
     } catch (error) {
+      console.error('handleMarkPaid failed:', error?.response?.data || error);
       toast.error('Error al marcar como pagado');
     }
   };
 
   const handleSendWhatsApp = async (order) => {
     try {
-      await pb.collection('orders').update(order.id, { orderStatus: 'En camino' }, { $autoCancel: false });
+      await pb.collection('orders').update(order.id, { orderStatus: 'En camino' }, { requestKey: null });
       let whatsappOk = true;
       try {
         const res = await apiServerClient.fetch('/orders/send-whatsapp', {

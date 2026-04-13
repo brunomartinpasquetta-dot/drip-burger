@@ -35,10 +35,10 @@ const RegistrationModal = ({ isOpen, onClose, onSuccess, checkoutData }) => {
         phone: checkoutData?.telefono || '',
         address: checkoutData?.direccion || '',
         emailVisibility: true
-      }, { $autoCancel: false });
+      }, { requestKey: null });
 
       // Auto-login after successful registration
-      await pb.collection('users').authWithPassword(email, password, { $autoCancel: false });
+      await pb.collection('users').authWithPassword(email, password, { requestKey: null });
 
       onSuccess();
       onClose();

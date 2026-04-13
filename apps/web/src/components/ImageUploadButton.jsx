@@ -38,7 +38,7 @@ const ImageUploadButton = ({ product, onUploadSuccess }) => {
     formData.append('image', file);
 
     try {
-      await pb.collection('products').update(product.id, formData, { $autoCancel: false });
+      await pb.collection('products').update(product.id, formData, { requestKey: null });
       toast.success('Imagen actualizada correctamente');
       setImgError(false);
       if (onUploadSuccess) {

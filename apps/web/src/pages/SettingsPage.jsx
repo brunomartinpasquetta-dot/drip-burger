@@ -25,7 +25,7 @@ const SettingsPage = () => {
   const loadSettings = async () => {
     try {
       setLoading(true);
-      const records = await pb.collection('settings').getList(1, 1, { $autoCancel: false });
+      const records = await pb.collection('settings').getList(1, 1, { requestKey: null });
       if (records.items.length > 0) {
         const record = records.items[0];
         setSettingsId(record.id);
@@ -46,9 +46,9 @@ const SettingsPage = () => {
       const data = { precio_envio: Number(precioEnvio) };
 
       if (settingsId) {
-        await pb.collection('settings').update(settingsId, data, { $autoCancel: false });
+        await pb.collection('settings').update(settingsId, data, { requestKey: null });
       } else {
-        const newRecord = await pb.collection('settings').create(data, { $autoCancel: false });
+        const newRecord = await pb.collection('settings').create(data, { requestKey: null });
         setSettingsId(newRecord.id);
       }
 

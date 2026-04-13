@@ -74,7 +74,7 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password, rememberMe = false) => {
     try {
       window.useSessionStorage = !rememberMe;
-      const authData = await pb.collection('users').authWithPassword(email, password, { $autoCancel: false });
+      const authData = await pb.collection('users').authWithPassword(email, password, { requestKey: null });
       setCurrentUser(authData.record);
       return authData.record;
     } catch (error) {

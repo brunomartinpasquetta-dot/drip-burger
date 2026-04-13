@@ -121,7 +121,7 @@ const CartPage = () => {
         orderData.user_id = currentUser.id;
       }
 
-      const order = await pb.collection('orders').create(orderData, { $autoCancel: false });
+      const order = await pb.collection('orders').create(orderData, { requestKey: null });
       clearCart();
       navigate(`/confirmacion/${order.id}`, { state: { order } });
     } catch (error) {

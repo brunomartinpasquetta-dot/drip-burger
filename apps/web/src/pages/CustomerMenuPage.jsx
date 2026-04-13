@@ -22,7 +22,7 @@ const CustomerMenuPage = () => {
     const queryParams = {
       filter: 'available = true',
       sort: 'name',
-      $autoCancel: false
+      requestKey: null
     };
 
     try {

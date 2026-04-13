@@ -105,10 +105,10 @@ const ProductForm = ({ product, open, onOpenChange, onSuccess }) => {
       }
 
       if (product) {
-        await pb.collection('products').update(product.id, data, { $autoCancel: false });
+        await pb.collection('products').update(product.id, data, { requestKey: null });
         toast.success('Producto actualizado');
       } else {
-        await pb.collection('products').create(data, { $autoCancel: false });
+        await pb.collection('products').create(data, { requestKey: null });
         toast.success('Producto creado');
       }
 

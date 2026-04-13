@@ -55,7 +55,7 @@ const AuthModal = ({ isOpen, onClose }) => {
       // 1. Check if email exists
       const existing = await pb.collection('users').getList(1, 1, {
         filter: `email="${regData.email}"`,
-        $autoCancel: false
+        requestKey: null
       });
 
       if (existing.items.length > 0) {
@@ -76,7 +76,7 @@ const AuthModal = ({ isOpen, onClose }) => {
         direccion: regData.direccion,
         address: regData.direccion,
         role: 'CUSTOMER'
-      }, { $autoCancel: false });
+      }, { requestKey: null });
 
       // 3. Auto-login after registration (default to rememberMe = true for new accounts)
       await login(regData.email, regData.password, true);

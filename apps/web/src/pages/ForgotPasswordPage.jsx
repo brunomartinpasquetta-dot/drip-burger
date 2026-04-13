@@ -22,7 +22,7 @@ const ForgotPasswordPage = () => {
     
     setLoading(true);
     try {
-      await pb.collection('users').requestPasswordReset(email, { $autoCancel: false });
+      await pb.collection('users').requestPasswordReset(email, { requestKey: null });
       setSubmitted(true);
       toast.success('Correo de recuperación enviado');
     } catch (error) {

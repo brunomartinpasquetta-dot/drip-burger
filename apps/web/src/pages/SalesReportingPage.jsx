@@ -42,7 +42,7 @@ const SalesReportingPage = () => {
 
       const orders = await pb.collection('orders').getFullList({
         filter: filterString,
-        $autoCancel: false
+        requestKey: null
       });
 
       let totalOrders = 0;

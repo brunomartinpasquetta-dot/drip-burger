@@ -29,7 +29,7 @@ const OrderHistoryPage = () => {
         const records = await pb.collection('orders').getFullList({
           filter: `user_id = "${currentUser.id}"`,
           sort: '-created',
-          $autoCancel: false
+          requestKey: null
         });
         setOrders(records);
       } catch (error) {

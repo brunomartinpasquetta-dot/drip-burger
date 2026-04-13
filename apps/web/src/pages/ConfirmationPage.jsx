@@ -31,7 +31,7 @@ const ConfirmationPage = () => {
     if (!order && id) {
       const fetchOrder = async () => {
         try {
-          const record = await pb.collection('orders').getOne(id, { $autoCancel: false });
+          const record = await pb.collection('orders').getOne(id, { requestKey: null });
           setOrder(record);
         } catch (err) {
           setError('No se pudo cargar el pedido.');

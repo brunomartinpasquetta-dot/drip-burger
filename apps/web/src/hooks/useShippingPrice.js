@@ -11,7 +11,7 @@ export const useShippingPrice = () => {
     const fetchShippingPrice = async () => {
       try {
         setLoading(true);
-        const records = await pb.collection('settings').getList(1, 1, { $autoCancel: false });
+        const records = await pb.collection('settings').getList(1, 1, { requestKey: null });
         if (records.items.length > 0) {
           setShippingPrice(records.items[0].precio_envio || 0);
         }
