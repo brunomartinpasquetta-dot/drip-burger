@@ -95,7 +95,6 @@ const CartPage = () => {
 
       const orderData = {
         orderNumber: `ORD-${Math.floor(10000 + Math.random() * 90000)}`,
-        user_id: currentUser?.id || null,
         nombre_apellido: nombreCompleto,
         telefono: formData.telefono,
         direccion: formData.direccion,
@@ -115,14 +114,19 @@ const CartPage = () => {
         deliveryTimeSlot: formData.horario_reparto,
         forma_pago: formData.forma_pago,
         paymentMethod: formData.forma_pago,
-        paymentStatus: 'Efectivo',
+        paymentStatus: 'Pendiente',
         orderStatus: 'Pendiente'
       };
+
+      if (currentUser?.id) {
+        orderData.user_id = currentUser.id;
+      }
 
       const order = await pb.collection('orders').create(orderData, { $autoCancel: false });
       clearCart();
       navigate(`/confirmacion/${order.id}`, { state: { order } });
     } catch (error) {
+      console.error('Order creation failed:', error?.response?.data || error);
       toast.error('Error al crear el pedido. Por favor intentá de nuevo.');
       setIsSubmitting(false);
     }
