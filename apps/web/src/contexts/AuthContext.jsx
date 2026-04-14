@@ -19,44 +19,9 @@ export const AuthProvider = ({ children }) => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Intercept PocketBase authStore to support sessionStorage (Remember Me = false)
-    const setupStorage = () => {
-      const originalSave = pb.authStore.save.bind(pb.authStore);
-      const originalClear = pb.authStore.clear.bind(pb.authStore);
-
-      pb.authStore.save = function(token, model) {
-        originalSave(token, model); // Default writes to localStorage
-        if (window.useSessionStorage) {
-          const data = localStorage.getItem('pocketbase_auth');
-          if (data) {
-            sessionStorage.setItem('pocketbase_auth', data);
-            localStorage.removeItem('pocketbase_auth');
-          }
-        } else {
-          sessionStorage.removeItem('pocketbase_auth');
-        }
-      };
-
-      pb.authStore.clear = function() {
-        originalClear();
-        sessionStorage.removeItem('pocketbase_auth');
-      };
-
-      // Restore from sessionStorage if it exists (page refresh when rememberMe was false)
-      const sessionData = sessionStorage.getItem('pocketbase_auth');
-      if (sessionData) {
-        window.useSessionStorage = true;
-        try {
-          const parsed = JSON.parse(sessionData);
-          pb.authStore.save(parsed.token, parsed.model);
-        } catch (e) {
-          console.error('Error parsing session auth data', e);
-        }
-      }
-    };
-
-    setupStorage();
-
+    // El SDK de PocketBase ya hidrata pb.authStore desde localStorage en su
+    // constructor (LocalAuthStore por default). No necesitamos interceptar
+    // save/clear — el wrapper custom anterior rompía la persistencia.
     if (pb.authStore.isValid && pb.authStore.model) {
       setCurrentUser(pb.authStore.model);
     }
@@ -71,9 +36,11 @@ export const AuthProvider = ({ children }) => {
     };
   }, []);
 
-  const login = async (email, password, rememberMe = false) => {
+  // El 3er parámetro rememberMe se ignora — siempre persistimos en localStorage.
+  // Se mantiene en la firma para no romper LoginPage/AuthModal que lo pasan.
+  // eslint-disable-next-line no-unused-vars
+  const login = async (email, password, rememberMe = true) => {
     try {
-      window.useSessionStorage = !rememberMe;
       const authData = await pb.collection('users').authWithPassword(email, password, { requestKey: null });
       setCurrentUser(authData.record);
       return authData.record;
@@ -95,7 +62,11 @@ export const AuthProvider = ({ children }) => {
     login,
     logout,
     isAdmin,
-    isAuthenticated: !!currentUser
+    isAuthenticated: !!currentUser,
+    // isAuthReady = pb.authStore ya fue hidratado (sea con token válido o sin sesión).
+    // Los consumers que disparan fetchs sensibles a la auth deben esperar a este flag
+    // antes de llamar al API para evitar requests sin Authorization header.
+    isAuthReady: !initialLoading,
   };
 
   if (initialLoading) {

@@ -26,11 +26,19 @@ export const updateIntegration = async (key, patch) => {
 
 const callApi = async (path, { method = 'GET', body } = {}) => {
     const token = pb.authStore.token;
+    if (!token) {
+        // Early-throw para evitar requests sin Authorization header. El caller
+        // debería guardar el dispatch detrás de `isAuthReady` del AuthContext;
+        // esto es la última barrera defensiva contra requests huérfanos.
+        const err = new Error('No autenticado');
+        err.status = 401;
+        throw err;
+    }
     const res = await apiServerClient.fetch(path, {
         method,
         headers: {
             'Content-Type': 'application/json',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            Authorization: `Bearer ${token}`,
         },
         body: body ? JSON.stringify(body) : undefined,
     });

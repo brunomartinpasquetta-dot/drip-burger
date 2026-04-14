@@ -28,23 +28,23 @@ const Header = () => {
     <>
       <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex h-20 items-center justify-between">
+          <div className="flex h-14 items-center justify-between">
             <div className="flex items-center gap-2 sm:gap-3">
-              <Link to="/" className="flex items-center space-x-3">
+              <Link to="/" className="flex items-center space-x-2">
                 <img
                   src="https://horizons-cdn.hostinger.com/275f7838-3e15-483d-8eea-e9521d942912/cf52b8972fd221515cb37ac167cfd2a2.png"
                   alt="DRIP BURGER Logo"
-                  className="w-[50px] h-[50px] sm:w-[60px] sm:h-[60px] object-contain"
+                  className="w-10 h-10 sm:w-11 sm:h-11 object-contain"
                 />
                 <div className="hidden sm:flex flex-col">
-                  <span className="text-xl sm:text-2xl font-black uppercase tracking-wider text-primary leading-tight">DRIP BURGER</span>
-                  <span className="text-[10px] sm:text-xs font-bold uppercase tracking-widest text-secondary">Streetwear Burgers</span>
+                  <span className="text-base sm:text-lg font-black uppercase tracking-wider text-primary leading-tight">DRIP BURGER</span>
+                  <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-widest text-secondary leading-tight">Streetwear Burgers</span>
                 </div>
               </Link>
               {isAuthenticated && isAdmin && (
                 <Link
                   to="/gestion"
-                  className="hidden md:inline-flex items-center gap-1 h-7 px-2 rounded border border-primary/40 bg-primary/10 text-primary hover:bg-primary/20 transition-colors text-[10px] font-black uppercase tracking-wide"
+                  className="hidden md:inline-flex items-center gap-1 h-6 px-1.5 rounded border border-primary/40 bg-primary/10 text-primary hover:bg-primary/20 transition-colors text-[9px] font-black uppercase tracking-wide"
                   title="Panel de Admin"
                 >
                   <LayoutDashboard className="w-3 h-3" />
@@ -53,24 +53,14 @@ const Header = () => {
               )}
             </div>
 
-            {/* Desktop Navigation — Menú solo para usuarios no-admin; Reportes movido al panel admin */}
-            <nav className="hidden md:flex items-center space-x-8">
-              {!isAdmin && (
-                <Link
-                  to="/menu"
-                  className={`text-sm font-bold uppercase tracking-wider transition-colors hover:text-primary ${
-                    isActive('/menu') ? 'text-primary' : 'text-foreground/80'
-                  }`}
-                >
-                  Menú
-                </Link>
-              )}
-            </nav>
+            {/* Desktop Navigation — el link Menú se movió a la HomePage (botón + carousel).
+                Reportes vive dentro del panel admin. Este nav queda vacío por ahora. */}
+            <nav className="hidden md:flex items-center space-x-8" />
 
             {/* Global Actions Container (Mobile + Desktop) */}
             <div className="flex items-center space-x-2 sm:space-x-4">
               
-              {/* Cart Icon - ALWAYS VISIBLE ON ALL SCREENS */}
+              {/* Cart Icon - prominente, fill el alto del top bar (pediste "el doble de grande") */}
               <div className="relative flex items-center">
                 <Button
                   variant="ghost"
@@ -79,9 +69,9 @@ const Header = () => {
                   onClick={() => navigate('/carrito')}
                   aria-label="Ir al carrito"
                 >
-                  <ShoppingCart className="h-7 w-7 sm:h-8 sm:w-8" />
+                  <ShoppingCart className="!h-10 !w-10 sm:!h-11 sm:!w-11" />
                   {cartCount > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 bg-[#F5A800] text-white text-xs font-black rounded-full w-6 h-6 flex items-center justify-center shadow-md border-2 border-background">
+                    <span className="absolute top-0 right-0 bg-[#F5A800] text-white text-[10px] font-black rounded-full w-5 h-5 flex items-center justify-center shadow-md border-2 border-background">
                       {cartCount}
                     </span>
                   )}
@@ -91,19 +81,19 @@ const Header = () => {
               {/* Desktop User Actions */}
               <div className="hidden md:flex items-center space-x-4">
                 {!isAuthenticated ? (
-                  <Button 
-                    variant="default" 
-                    className="btn-primary font-bold uppercase tracking-wide text-xs h-10 px-4"
+                  <Button
+                    variant="default"
+                    className="btn-primary font-bold uppercase tracking-wide text-xs h-9 px-3"
                     onClick={() => setIsAuthModalOpen(true)}
                   >
-                    <User className="w-4 h-4 mr-2" />
+                    <User className="w-4 h-4 mr-1.5" />
                     MI CUENTA
                   </Button>
                 ) : (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="hover:text-primary hover:bg-primary/10 transition-colors h-14 w-14">
-                        <User className="h-7 w-7" />
+                      <Button variant="ghost" size="icon" className="hover:text-primary hover:bg-primary/10 transition-colors h-10 w-10">
+                        <User className="h-5 w-5" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="bg-card border-border w-48">
@@ -152,14 +142,6 @@ const Header = () => {
           {/* Mobile Menu Dropdown */}
           {mobileMenuOpen && (
             <div className="md:hidden py-4 space-y-2 border-t border-border bg-background animate-in slide-in-from-top-2">
-              <Link
-                to="/menu"
-                className="block px-4 py-3 text-sm font-bold uppercase tracking-wider rounded-lg hover:bg-primary/10 hover:text-primary transition-colors"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                Menú
-              </Link>
-              
               <Link
                 to="/carrito"
                 className="w-full flex items-center justify-between px-4 py-3 text-sm font-bold uppercase tracking-wider rounded-lg hover:bg-primary/10 hover:text-primary transition-colors"

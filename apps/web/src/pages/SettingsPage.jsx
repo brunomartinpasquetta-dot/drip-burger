@@ -30,6 +30,7 @@ import {
   mpStatus, mpSave, mpTest, mpToggle,
 } from '@/lib/integrationsClient';
 import { computeIsOpen } from '@/hooks/useStoreHours';
+import { useAuth } from '@/contexts/AuthContext.jsx';
 
 const formatShippingPreview = (price) => {
   const num = Number(price) || 0;
@@ -73,6 +74,7 @@ const StatusDot = ({ status }) => (
 //  (el estado de apertura es visible de un vistazo sin scrollear).
 // ══════════════════════════════════════════════════════════════════
 const OperacionCard = () => {
+  const { isAuthReady, currentUser } = useAuth();
   const [settingsId, setSettingsId] = useState(null);
   const [precioEnvio, setPrecioEnvio] = useState(0);
   const [horaApertura, setHoraApertura] = useState('20:00');
@@ -82,9 +84,14 @@ const OperacionCard = () => {
   const [, forceTick] = useState(0);
 
   useEffect(() => {
+    // No fetchear hasta que auth esté hidratado. Evita requests huérfanos que
+    // disparan el banner rojo de error apenas el componente monta.
+    if (!isAuthReady || !currentUser) return;
+    let mounted = true;
     (async () => {
       try {
         const records = await pb.collection('settings').getList(1, 1, { requestKey: null });
+        if (!mounted) return;
         if (records.items.length > 0) {
           const rec = records.items[0];
           setSettingsId(rec.id);
@@ -94,12 +101,13 @@ const OperacionCard = () => {
         }
       } catch (err) {
         console.error('[OperacionCard] load failed:', err);
-        toast.error('Error al cargar la configuración');
+        if (mounted) toast.error('Error al cargar la configuración');
       } finally {
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
     })();
-  }, []);
+    return () => { mounted = false; };
+  }, [isAuthReady, currentUser]);
 
   // Re-render cada 60s para que el preview de "Abierto/Cerrado" se actualice
   useEffect(() => {
@@ -231,6 +239,7 @@ const OperacionCard = () => {
 //  WhatsApp Card
 // ══════════════════════════════════════════════════════════════════
 const WhatsAppCard = () => {
+  const { isAuthReady, currentUser } = useAuth();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
   const [busyAction, setBusyAction] = useState(null); // 'connect' | 'disconnect' | 'test' | 'toggle'
@@ -251,8 +260,9 @@ const WhatsAppCard = () => {
   }, []);
 
   useEffect(() => {
+    if (!isAuthReady || !currentUser) return;
     load();
-  }, [load]);
+  }, [isAuthReady, currentUser, load]);
 
   // Polling cuando el modal de QR está abierto — cada 2s
   useEffect(() => {
@@ -474,6 +484,7 @@ const WhatsAppCard = () => {
 //  Mercado Pago Card
 // ══════════════════════════════════════════════════════════════════
 const MercadoPagoCard = () => {
+  const { isAuthReady, currentUser } = useAuth();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
   const [busyAction, setBusyAction] = useState(null);
@@ -505,8 +516,9 @@ const MercadoPagoCard = () => {
   }, []);
 
   useEffect(() => {
+    if (!isAuthReady || !currentUser) return;
     load();
-  }, [load]);
+  }, [isAuthReady, currentUser, load]);
 
   const handleSave = async () => {
     if (!form.accessToken.trim() || !form.publicKey.trim()) {

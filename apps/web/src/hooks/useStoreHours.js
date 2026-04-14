@@ -38,7 +38,10 @@ export const useStoreHours = () => {
 
   useEffect(() => {
     let mounted = true;
-    (async () => {
+    let unsubscribe = null;
+    let timeoutId = null;
+
+    const doLoad = async () => {
       try {
         const records = await pb.collection('settings').getList(1, 1, { requestKey: null });
         if (!mounted) return;
@@ -52,8 +55,44 @@ export const useStoreHours = () => {
       } finally {
         if (mounted) setLoading(false);
       }
-    })();
-    return () => { mounted = false; };
+    };
+
+    // Si hay datos de auth pendientes de hidratar y el authStore aún no los
+    // levantó, esperamos al primer onChange (o a un fallback de 300ms) antes
+    // de disparar el fetch. Esto evita el race entre la navegación post-login
+    // y el mount del hook — el settings collection suele ser public pero en
+    // caso de rules restrictivas, el request sin token se rechazaría.
+    let hasPendingAuth = false;
+    try {
+      hasPendingAuth =
+        (typeof localStorage !== 'undefined' && !!localStorage.getItem('pocketbase_auth')) ||
+        (typeof sessionStorage !== 'undefined' && !!sessionStorage.getItem('pocketbase_auth'));
+    } catch (e) {
+      hasPendingAuth = false;
+    }
+
+    if (hasPendingAuth && !pb.authStore.isValid) {
+      unsubscribe = pb.authStore.onChange(() => {
+        if (!mounted) return;
+        if (unsubscribe) { unsubscribe(); unsubscribe = null; }
+        if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
+        doLoad();
+      });
+      timeoutId = setTimeout(() => {
+        if (!mounted) return;
+        if (unsubscribe) { unsubscribe(); unsubscribe = null; }
+        timeoutId = null;
+        doLoad();
+      }, 300);
+    } else {
+      doLoad();
+    }
+
+    return () => {
+      mounted = false;
+      if (unsubscribe) unsubscribe();
+      if (timeoutId) clearTimeout(timeoutId);
+    };
   }, []);
 
   // Re-render cada 60 segundos para que isOpen se mantenga actualizado
