@@ -1,8 +1,9 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
 import { useAuth } from '@/contexts/AuthContext.jsx';
+import { useStoreHours } from '@/hooks/useStoreHours';
 import Header from '@/components/Header.jsx';
 import AuthModal from '@/components/AuthModal.jsx';
 import { Button } from '@/components/ui/button';
@@ -10,26 +11,10 @@ import { Truck, CreditCard, Flame, Instagram, MessageCircle, MapPin } from 'luci
 import { motion } from 'framer-motion';
 
 const HomePage = () => {
-  const { isAuthenticated, isAdmin } = useAuth();
-  const [isOpen, setIsOpen] = useState(false);
+  const { isAuthenticated } = useAuth();
+  const { isOpen, horaApertura, horaCierre } = useStoreHours();
   const [showAuthModal, setShowAuthModal] = useState(false);
-
-  useEffect(() => {
-    const checkStatus = () => {
-      const now = new Date();
-      const hours = now.getHours();
-      // Open between 20:00 and 23:00
-      if (hours >= 20 && hours < 23) {
-        setIsOpen(true);
-      } else {
-        setIsOpen(false);
-      }
-    };
-
-    checkStatus();
-    const interval = setInterval(checkStatus, 60000); // Update every minute
-    return () => clearInterval(interval);
-  }, []);
+  const [authInitialTab, setAuthInitialTab] = useState('register');
 
   return (
     <>
@@ -93,29 +78,17 @@ const HomePage = () => {
                 transition={{ duration: 0.6, delay: 0.3 }}
                 className="flex flex-col sm:flex-row gap-4 justify-center"
               >
+                <Button asChild size="lg" className="btn-primary text-lg px-10 h-14">
+                  <Link to="/menu">Hacer Pedido</Link>
+                </Button>
                 {!isAuthenticated && (
-                  <>
-                    <Button asChild size="lg" className="btn-primary text-lg px-10 h-14">
-                      <Link to="/menu">Ver Menú</Link>
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="lg" 
-                      className="btn-secondary text-lg px-10 h-14"
-                      onClick={() => setShowAuthModal(true)}
-                    >
-                      Ingresar
-                    </Button>
-                  </>
-                )}
-                {isAuthenticated && !isAdmin && (
-                  <Button asChild size="lg" className="btn-primary text-lg px-10 h-14">
-                    <Link to="/menu">Pedir Ahora</Link>
-                  </Button>
-                )}
-                {isAuthenticated && isAdmin && (
-                  <Button asChild size="lg" className="btn-primary text-lg px-10 h-14">
-                    <Link to="/admin">Panel Admin</Link>
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    className="btn-secondary text-lg px-10 h-14"
+                    onClick={() => { setAuthInitialTab('register'); setShowAuthModal(true); }}
+                  >
+                    Registrarme como Cliente
                   </Button>
                 )}
               </motion.div>
@@ -175,19 +148,24 @@ const HomePage = () => {
           <div className="container mx-auto px-4 flex flex-col items-center text-center">
             
             {/* Status Indicator */}
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               whileInView={{ opacity: 1, scale: 1 }}
               viewport={{ once: true }}
-              className="mb-8 font-black uppercase tracking-widest text-sm md:text-base bg-background/20 px-6 py-2 rounded-full shadow-inner"
+              className="mb-8 font-black uppercase tracking-widest text-sm md:text-base bg-background/20 px-6 py-2 rounded-full shadow-inner flex items-center justify-center gap-3"
             >
               {isOpen ? (
-                <span className="text-[#22c55e] flex items-center justify-center gap-2">
+                <span className="text-[#22c55e] flex items-center gap-2">
                   <span className="text-[10px]">●</span> ABIERTO
                 </span>
               ) : (
-                <span className="text-[#ef4444] flex items-center justify-center gap-2">
+                <span className="text-[#ef4444] flex items-center gap-2">
                   <span className="text-[10px]">●</span> CERRADO
+                </span>
+              )}
+              {horaApertura && horaCierre && (
+                <span className="text-muted-foreground text-xs md:text-sm tabular-nums font-bold normal-case tracking-wide">
+                  {horaApertura} – {horaCierre}
                 </span>
               )}
             </motion.div>
@@ -256,9 +234,10 @@ const HomePage = () => {
         </a>
 
         {/* Authentication Modal */}
-        <AuthModal 
-          isOpen={showAuthModal} 
-          onClose={() => setShowAuthModal(false)} 
+        <AuthModal
+          isOpen={showAuthModal}
+          onClose={() => setShowAuthModal(false)}
+          defaultTab={authInitialTab}
         />
       </div>
     </>

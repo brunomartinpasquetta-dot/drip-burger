@@ -1,12 +1,13 @@
 
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
 import pb from '@/lib/pocketbaseClient';
 import Header from '@/components/Header.jsx';
 import ProductCard from '@/components/ProductCard.jsx';
 import FloatingCartBar from '@/components/FloatingCartBar.jsx';
 import { Skeleton } from '@/components/ui/skeleton';
-import { AlertCircle, RefreshCw } from 'lucide-react';
+import { AlertCircle, RefreshCw, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 const CustomerMenuPage = () => {
@@ -57,13 +58,21 @@ const CustomerMenuPage = () => {
           {/* Main Area: Products Grid (100% width) */}
           <main className="w-full h-full relative">
             <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 pb-32">
-              <div className="mb-8 md:mb-12 text-center md:text-left">
-                <h1 className="text-4xl md:text-5xl lg:text-6xl font-black uppercase tracking-tighter mb-2 md:mb-4">
-                  El <span className="text-primary">Menú</span>
-                </h1>
-                <p className="text-sm md:text-lg text-muted-foreground max-w-2xl font-medium">
-                  Elegí tu burger. Personalizá los medallones. Disfrutá el estilo DRIP.
-                </p>
+              <div className="mb-6 md:mb-10">
+                <Button asChild variant="outline" size="sm" className="border-border h-9 px-3 mb-4 font-bold uppercase tracking-wide text-xs">
+                  <Link to="/">
+                    <ArrowLeft className="mr-1.5 h-4 w-4" />
+                    Volver al inicio
+                  </Link>
+                </Button>
+                <div className="text-center md:text-left">
+                  <h1 className="text-4xl md:text-5xl lg:text-6xl font-black uppercase tracking-tighter mb-2 md:mb-4">
+                    El <span className="text-primary">Menú</span>
+                  </h1>
+                  <p className="text-sm md:text-lg text-muted-foreground max-w-2xl font-medium">
+                    Elegí tu burger. Personalizá los medallones. Disfrutá el estilo DRIP.
+                  </p>
+                </div>
               </div>
 
               {loading ? (
