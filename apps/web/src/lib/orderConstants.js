@@ -1,5 +1,7 @@
 export const ORDER_STATUS = {
   PENDING: 'Pendiente',
+  COOKING: 'En preparación',
+  READY: 'Listo',
   IN_TRANSIT: 'En camino',
   COMPLETED: 'Finalizado',
 };
