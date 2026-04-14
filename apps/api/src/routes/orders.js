@@ -1,7 +1,7 @@
 import express from 'express';
-import twilio from 'twilio';
 import pb from '../utils/pocketbaseClient.js';
 import logger from '../utils/logger.js';
+import { isReady, sendMessage } from '../services/whatsappService.js';
 
 const router = express.Router();
 
@@ -113,52 +113,53 @@ router.post('/send-whatsapp', async (req, res) => {
     return res.status(400).json({ error: 'deliveryTimeSlot is required' });
   }
 
-  // Check if Twilio credentials are configured
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const twilioWhatsAppNumber = process.env.TWILIO_WHATSAPP_NUMBER;
+  // Chequeamos primero si la integración de WhatsApp está habilitada en PB.
+  // Si el admin la desactivó desde /gestion/config, hacemos skip sin intentar
+  // mandar nada (aunque el client esté ready).
+  try {
+    const integ = await pb.collection('integrations').getFirstListItem('key="whatsapp"', { requestKey: null });
+    if (!integ.enabled) {
+      logger.info(`WhatsApp deshabilitado en config — skip para order ${orderId}`);
+      return res.json({
+        success: true,
+        messageSent: false,
+        reason: 'WhatsApp deshabilitado',
+      });
+    }
+  } catch (err) {
+    logger.warn(`[send-whatsapp] no pude leer integrations config: ${err?.message || err}`);
+    // Continuamos en modo tolerante: si no podemos leer config, confiamos en isReady()
+  }
 
-  if (!accountSid || !authToken || !twilioWhatsAppNumber) {
-    console.error('WhatsApp notification skipped: Twilio credentials not configured');
+  // Si WhatsApp todavía no terminó de inicializar (QR no escaneado, o
+  // wa-session vacío) devolvemos una respuesta "skip" — el frontend sigue
+  // avanzando el estado del pedido a En camino y muestra un warning.
+  if (!isReady()) {
+    logger.warn(`WhatsApp no inicializado — skip para order ${orderId}`);
     return res.json({
       success: true,
       messageSent: false,
-      reason: 'Credenciales no configuradas',
+      reason: 'WhatsApp no inicializado',
     });
   }
 
-  // Initialize Twilio client
-  const client = twilio(accountSid, authToken);
-
-  // Build message text
-  const messageText = `¡Hola ${customerName}! Tu pedido está en camino. Llegará aproximadamente a las ${deliveryTimeSlot}. ¡Gracias por elegirnos!`;
-
-  // Format phone number for WhatsApp
-  const whatsappTo = `whatsapp:${customerPhone}`;
+  const messageText =
+    `🍔 ¡Hola ${customerName}! Tu pedido de Drip Burger está en camino.\n` +
+    `Llega aprox a las ${deliveryTimeSlot}.\n` +
+    `¡Gracias por elegirnos!`;
 
   try {
-    // Send WhatsApp message via Twilio
-    const message = await client.messages.create({
-      from: twilioWhatsAppNumber,
-      to: whatsappTo,
-      body: messageText,
-    });
-
-    logger.info(`WhatsApp message sent successfully. SID: ${message.sid}`);
-
-    res.json({
+    const message = await sendMessage(customerPhone, messageText);
+    logger.info(`WhatsApp enviado OK — order ${orderId} → ${customerPhone} (wa id: ${message?.id?._serialized || 'n/a'})`);
+    return res.json({
       success: true,
       messageSent: true,
-      messageSid: message.sid,
     });
   } catch (error) {
-    console.error('WhatsApp send failed:', error.message);
-    logger.error(`WhatsApp send failed for order ${orderId}:`, error.message);
-
-    res.json({
-      success: true,
-      messageSent: false,
-      reason: 'Error al enviar mensaje',
+    logger.error(`WhatsApp send failed for order ${orderId}: ${error.message}`);
+    return res.json({
+      success: false,
+      error: error.message,
     });
   }
 });

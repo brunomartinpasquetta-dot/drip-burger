@@ -66,13 +66,15 @@ function App() {
               }
             />
             <Route
-              path="/gestion/configuracion"
+              path="/gestion/config"
               element={
                 <AdminRoute>
                   <SettingsPage />
                 </AdminRoute>
               }
             />
+            {/* Alias legacy — redirige al nuevo path */}
+            <Route path="/gestion/configuracion" element={<Navigate to="/gestion/config" replace />} />
 
             {/* Fallback */}
             <Route path="*" element={<Navigate to="/" replace />} />

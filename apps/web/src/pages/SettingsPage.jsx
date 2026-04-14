@@ -1,156 +1,573 @@
 
-import React, { useState, useEffect } from 'react';
-import { Helmet } from 'react-helmet';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import pb from '@/lib/pocketbaseClient';
+import { Helmet } from 'react-helmet';
 import Header from '@/components/Header.jsx';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowLeft, Save, Truck } from 'lucide-react';
+import {
+  ArrowLeft,
+  MessageCircle,
+  CreditCard,
+  Eye,
+  EyeOff,
+  Copy,
+  RefreshCw,
+  Send,
+  Power,
+  AlertCircle,
+  Loader2,
+} from 'lucide-react';
 import { toast } from 'sonner';
+import {
+  waStatus, waConnect, waDisconnect, waTest, waToggle,
+  mpStatus, mpSave, mpTest, mpToggle,
+} from '@/lib/integrationsClient';
 
-const SettingsPage = () => {
-  const [settingsId, setSettingsId] = useState(null);
-  const [precioEnvio, setPrecioEnvio] = useState(0);
+// ── Helpers de presentación ──────────────────────────────────────
+const BORDER_BY_STATUS = {
+  connected: 'border-l-green-500',
+  pending_qr: 'border-l-yellow-500',
+  disconnected: 'border-l-red-500',
+  error: 'border-l-red-500',
+};
+
+const STATUS_LABEL = {
+  connected: 'Conectado',
+  pending_qr: 'Pendiente de QR',
+  disconnected: 'Desconectado',
+  error: 'Error',
+};
+
+const STATUS_DOT_COLOR = {
+  connected: 'text-green-500',
+  pending_qr: 'text-yellow-500',
+  disconnected: 'text-red-500',
+  error: 'text-red-500',
+};
+
+const StatusDot = ({ status }) => (
+  <span className={`inline-flex items-center gap-1.5 text-xs font-black uppercase tracking-wide ${STATUS_DOT_COLOR[status] || 'text-muted-foreground'}`}>
+    <span className="text-[10px]">●</span>
+    {STATUS_LABEL[status] || 'Desconocido'}
+  </span>
+);
+
+// ══════════════════════════════════════════════════════════════════
+//  WhatsApp Card
+// ══════════════════════════════════════════════════════════════════
+const WhatsAppCard = () => {
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [data, setData] = useState(null);
+  const [busyAction, setBusyAction] = useState(null); // 'connect' | 'disconnect' | 'test' | 'toggle'
+  const [qrOpen, setQrOpen] = useState(false);
+  const [testPhone, setTestPhone] = useState('');
+  const pollingRef = useRef(null);
 
-  useEffect(() => {
-    loadSettings();
-  }, []);
-
-  const loadSettings = async () => {
+  const load = useCallback(async () => {
     try {
-      setLoading(true);
-      const records = await pb.collection('settings').getList(1, 1, { requestKey: null });
-      if (records.items.length > 0) {
-        const record = records.items[0];
-        setSettingsId(record.id);
-        setPrecioEnvio(record.precio_envio || 0);
-      }
-    } catch (error) {
-      toast.error('Error al cargar la configuración');
+      const res = await waStatus();
+      setData(res);
+    } catch (err) {
+      console.error('[WhatsAppCard] status failed:', err);
+      toast.error(`Error al leer estado de WhatsApp: ${err.message}`);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const handleSave = async (e) => {
-    e.preventDefault();
-    setSaving(true);
+  useEffect(() => {
+    load();
+  }, [load]);
 
-    try {
-      const data = { precio_envio: Number(precioEnvio) };
-
-      if (settingsId) {
-        await pb.collection('settings').update(settingsId, data, { requestKey: null });
-      } else {
-        const newRecord = await pb.collection('settings').create(data, { requestKey: null });
-        setSettingsId(newRecord.id);
+  // Polling cuando el modal de QR está abierto — cada 2s
+  useEffect(() => {
+    if (!qrOpen) {
+      if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
+      return;
+    }
+    pollingRef.current = setInterval(async () => {
+      try {
+        const res = await waStatus();
+        setData(res);
+        if (res.status === 'connected') {
+          clearInterval(pollingRef.current);
+          pollingRef.current = null;
+          setQrOpen(false);
+          toast.success('WhatsApp conectado correctamente');
+        }
+      } catch (err) {
+        // silenciar errores de polling
       }
+    }, 2000);
+    return () => {
+      if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
+    };
+  }, [qrOpen]);
 
-      toast.success('Configuración guardada correctamente');
-    } catch (error) {
-      toast.error('Error al guardar la configuración');
+  const handleConnect = async () => {
+    setBusyAction('connect');
+    try {
+      const res = await waConnect();
+      setData(res);
+      if (res.status === 'connected') {
+        toast.success('WhatsApp ya estaba conectado');
+      } else {
+        setQrOpen(true);
+        toast('Escaneá el QR desde el celular del negocio');
+      }
+    } catch (err) {
+      toast.error(`Error al conectar: ${err.message}`);
     } finally {
-      setSaving(false);
+      setBusyAction(null);
     }
   };
 
-  const formatShippingPreview = (price) => {
-    const numPrice = Number(price) || 0;
-    if (numPrice === 0) {
-      return <span className="text-green-500 font-bold text-xl">Envío gratis 🛵</span>;
+  const handleDisconnect = async () => {
+    if (!window.confirm('¿Seguro? Vas a desvincular el dispositivo y borrar la sesión.')) return;
+    setBusyAction('disconnect');
+    try {
+      await waDisconnect();
+      toast.success('WhatsApp desconectado');
+      await load();
+    } catch (err) {
+      toast.error(`Error al desconectar: ${err.message}`);
+    } finally {
+      setBusyAction(null);
     }
-    const formatted = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(numPrice);
-    return <span className="font-bold text-xl">Envío: {formatted}</span>;
   };
+
+  const handleTest = async () => {
+    if (!testPhone.trim()) {
+      toast.error('Ingresá un teléfono para probar');
+      return;
+    }
+    setBusyAction('test');
+    try {
+      await waTest(testPhone.trim());
+      toast.success(`Mensaje de prueba enviado a ${testPhone}`);
+    } catch (err) {
+      toast.error(`Error al enviar prueba: ${err.message}`);
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const handleToggle = async (enabled) => {
+    setBusyAction('toggle');
+    try {
+      await waToggle(enabled);
+      await load();
+      toast.success(enabled ? 'WhatsApp activado' : 'WhatsApp desactivado');
+    } catch (err) {
+      toast.error(`Error: ${err.message}`);
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  if (loading) {
+    return <Skeleton className="h-48 w-full rounded-xl" />;
+  }
+
+  if (!data) {
+    return (
+      <div className="bg-card border border-border border-l-[6px] border-l-red-500 rounded-lg p-4">
+        <div className="flex items-start gap-2 text-red-400">
+          <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+          <p className="text-sm font-bold">No se pudo cargar el estado de WhatsApp. Revisá la consola.</p>
+        </div>
+      </div>
+    );
+  }
+
+  const status = data.status || 'disconnected';
+  const borderCls = BORDER_BY_STATUS[status] || 'border-l-red-500';
+  const isConnected = status === 'connected';
 
   return (
     <>
-      <Helmet>
-        <title>Configuración - DRIP BURGER</title>
-      </Helmet>
+      <div className={`bg-card border border-border border-l-[6px] ${borderCls} rounded-lg overflow-hidden shadow-sm`}>
+        {/* Row 1: título + toggle */}
+        <div className="flex items-center justify-between gap-3 p-4 pb-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <MessageCircle className="w-5 h-5 text-primary shrink-0" />
+            <h3 className="text-lg sm:text-xl font-black uppercase tracking-tight">WhatsApp Business</h3>
+          </div>
+          <Switch
+            checked={!!data.enabled}
+            onCheckedChange={handleToggle}
+            disabled={busyAction !== null}
+            className="data-[state=checked]:bg-green-500"
+          />
+        </div>
+
+        {/* Row 2: estado + teléfono */}
+        <div className="px-4 pb-3 flex items-center gap-3 flex-wrap">
+          <StatusDot status={status} />
+          {data.phoneNumber && (
+            <span className="text-xs font-bold text-muted-foreground tabular-nums">· {data.phoneNumber}</span>
+          )}
+          {data.lastError && (
+            <span className="text-[10px] font-bold text-red-400 truncate max-w-xs">⚠ {data.lastError}</span>
+          )}
+        </div>
+
+        {/* Row 3: acciones — estilo idéntico a botones del AdminDashboard */}
+        <div className="px-4 py-3 border-t border-border">
+          {isConnected ? (
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div className="flex gap-2 flex-1">
+                <Input
+                  type="tel"
+                  value={testPhone}
+                  onChange={(e) => setTestPhone(e.target.value)}
+                  placeholder="+54 9 342 512 3456"
+                  className="bg-background border-border text-foreground h-10 text-xs font-bold tabular-nums flex-1"
+                />
+                <Button
+                  onClick={handleTest}
+                  disabled={busyAction !== null}
+                  size="sm"
+                  className="btn-primary h-10 px-3 text-xs font-black uppercase tracking-wide shrink-0"
+                >
+                  {busyAction === 'test' ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Send className="mr-1 h-4 w-4" />Probar</>}
+                </Button>
+              </div>
+              <Button
+                onClick={handleDisconnect}
+                disabled={busyAction !== null}
+                variant="outline"
+                size="sm"
+                className="h-10 px-3 border-red-500/50 text-red-400 hover:bg-red-500/10 text-xs font-black uppercase tracking-wide"
+              >
+                {busyAction === 'disconnect' ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Power className="mr-1 h-4 w-4" />Desconectar</>}
+              </Button>
+            </div>
+          ) : (
+            <Button
+              onClick={handleConnect}
+              disabled={busyAction !== null || !data.enabled}
+              className="btn-primary w-full h-11 text-sm font-black uppercase tracking-wide shadow-sm"
+            >
+              {busyAction === 'connect' ? <Loader2 className="h-5 w-5 animate-spin" /> : <><MessageCircle className="mr-2 h-5 w-5" />Conectar WhatsApp</>}
+            </Button>
+          )}
+          {!data.enabled && !isConnected && (
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mt-2 text-center">
+              Activá el toggle arriba para conectar
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Modal QR — fullscreen overlay */}
+      {qrOpen && (
+        <div className="fixed inset-0 z-50 bg-background/90 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-black uppercase tracking-tight">Escanear QR</h3>
+              <Button onClick={() => setQrOpen(false)} variant="ghost" size="sm" className="h-8 px-2 text-[11px]">Cancelar</Button>
+            </div>
+            <p className="text-xs text-muted-foreground font-bold mb-4">
+              Abrí WhatsApp en el celular del negocio → Configuración → Dispositivos vinculados → Vincular un dispositivo.
+            </p>
+            {data.qrCode ? (
+              <div className="bg-white p-4 rounded-lg flex items-center justify-center">
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(data.qrCode)}`}
+                  alt="QR WhatsApp"
+                  className="w-full h-auto"
+                />
+              </div>
+            ) : (
+              <div className="py-16 flex flex-col items-center gap-3">
+                <Loader2 className="w-10 h-10 animate-spin text-primary" />
+                <p className="text-xs font-bold text-muted-foreground uppercase">Esperando QR...</p>
+              </div>
+            )}
+            <p className="text-[10px] text-muted-foreground font-bold text-center mt-4 tabular-nums">
+              Polling cada 2s · Estado: <StatusDot status={status} />
+            </p>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
+
+// ══════════════════════════════════════════════════════════════════
+//  Mercado Pago Card
+// ══════════════════════════════════════════════════════════════════
+const MercadoPagoCard = () => {
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState(null);
+  const [busyAction, setBusyAction] = useState(null);
+  const [form, setForm] = useState({
+    accessToken: '',
+    publicKey: '',
+    webhookSecret: '',
+  });
+  const [visible, setVisible] = useState({
+    accessToken: false,
+    publicKey: false,
+    webhookSecret: false,
+  });
+
+  const load = useCallback(async () => {
+    try {
+      const res = await mpStatus();
+      setData(res);
+      setForm(f => ({
+        ...f,
+        publicKey: res.publicKey || '',
+      }));
+    } catch (err) {
+      console.error('[MercadoPagoCard] status failed:', err);
+      toast.error(`Error al leer estado de MP: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const handleSave = async () => {
+    if (!form.accessToken.trim() || !form.publicKey.trim()) {
+      toast.error('Access Token y Public Key son requeridos');
+      return;
+    }
+    setBusyAction('save');
+    try {
+      await mpSave({
+        accessToken: form.accessToken.trim(),
+        publicKey: form.publicKey.trim(),
+        webhookSecret: form.webhookSecret.trim() || undefined,
+      });
+      toast.success('Credenciales guardadas y verificadas');
+      setForm(f => ({ ...f, accessToken: '', webhookSecret: '' }));
+      await load();
+    } catch (err) {
+      toast.error(`Error: ${err.message}`);
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const handleTest = async () => {
+    setBusyAction('test');
+    try {
+      const res = await mpTest();
+      toast.success(`Conexión OK · init_point generado`);
+      console.log('[mp/test] init_point:', res.initPoint);
+      await load();
+    } catch (err) {
+      toast.error(`Error: ${err.message}`);
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const handleToggle = async (enabled) => {
+    setBusyAction('toggle');
+    try {
+      await mpToggle(enabled);
+      await load();
+      toast.success(enabled ? 'Mercado Pago activado' : 'Mercado Pago desactivado');
+    } catch (err) {
+      toast.error(`Error: ${err.message}`);
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const webhookUrl = 'https://api.dripburger.com/mp/webhook';
+  const copyWebhook = async () => {
+    try {
+      await navigator.clipboard.writeText(webhookUrl);
+      toast.success('Webhook copiado');
+    } catch (err) {
+      toast.error('No se pudo copiar');
+    }
+  };
+
+  if (loading) {
+    return <Skeleton className="h-64 w-full rounded-xl" />;
+  }
+
+  if (!data) {
+    return (
+      <div className="bg-card border border-border border-l-[6px] border-l-red-500 rounded-lg p-4">
+        <div className="flex items-start gap-2 text-red-400">
+          <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+          <p className="text-sm font-bold">No se pudo cargar el estado de Mercado Pago.</p>
+        </div>
+      </div>
+    );
+  }
+
+  const status = data.status || 'disconnected';
+  const borderCls = BORDER_BY_STATUS[status] || 'border-l-red-500';
+
+  return (
+    <div className={`bg-card border border-border border-l-[6px] ${borderCls} rounded-lg overflow-hidden shadow-sm`}>
+      {/* Row 1: título + toggle */}
+      <div className="flex items-center justify-between gap-3 p-4 pb-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <CreditCard className="w-5 h-5 text-primary shrink-0" />
+          <h3 className="text-lg sm:text-xl font-black uppercase tracking-tight">Mercado Pago</h3>
+        </div>
+        <Switch
+          checked={!!data.enabled}
+          onCheckedChange={handleToggle}
+          disabled={busyAction !== null}
+          className="data-[state=checked]:bg-green-500"
+        />
+      </div>
+
+      {/* Row 2: estado */}
+      <div className="px-4 pb-3 flex items-center gap-3 flex-wrap">
+        <StatusDot status={status} />
+        {data.accessTokenPreview && (
+          <span className="text-[10px] font-mono font-bold text-muted-foreground">Token: {data.accessTokenPreview}</span>
+        )}
+        {data.lastError && (
+          <span className="text-[10px] font-bold text-red-400 truncate max-w-xs">⚠ {data.lastError}</span>
+        )}
+      </div>
+
+      {/* Row 3: inputs con toggle visibility */}
+      <div className="px-4 py-3 border-t border-border space-y-3">
+        <div className="space-y-1">
+          <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Access Token</label>
+          <div className="relative">
+            <Input
+              type={visible.accessToken ? 'text' : 'password'}
+              value={form.accessToken}
+              onChange={(e) => setForm(f => ({ ...f, accessToken: e.target.value }))}
+              placeholder={data.accessTokenPreview || 'APP_USR-...'}
+              className="bg-background border-border text-foreground h-9 text-xs font-mono pr-9"
+            />
+            <button
+              type="button"
+              onClick={() => setVisible(v => ({ ...v, accessToken: !v.accessToken }))}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              {visible.accessToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Public Key</label>
+          <div className="relative">
+            <Input
+              type={visible.publicKey ? 'text' : 'password'}
+              value={form.publicKey}
+              onChange={(e) => setForm(f => ({ ...f, publicKey: e.target.value }))}
+              placeholder="APP_USR-..."
+              className="bg-background border-border text-foreground h-9 text-xs font-mono pr-9"
+            />
+            <button
+              type="button"
+              onClick={() => setVisible(v => ({ ...v, publicKey: !v.publicKey }))}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              {visible.publicKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Webhook Secret (opcional)</label>
+          <div className="relative">
+            <Input
+              type={visible.webhookSecret ? 'text' : 'password'}
+              value={form.webhookSecret}
+              onChange={(e) => setForm(f => ({ ...f, webhookSecret: e.target.value }))}
+              placeholder="Secret para validar webhooks"
+              className="bg-background border-border text-foreground h-9 text-xs font-mono pr-9"
+            />
+            <button
+              type="button"
+              onClick={() => setVisible(v => ({ ...v, webhookSecret: !v.webhookSecret }))}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              {visible.webhookSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Row 4: acciones */}
+      <div className="px-4 py-3 border-t border-border flex flex-col sm:flex-row gap-2">
+        <Button
+          onClick={handleSave}
+          disabled={busyAction !== null}
+          size="sm"
+          className="btn-primary flex-1 h-10 text-xs font-black uppercase tracking-wide shadow-sm"
+        >
+          {busyAction === 'save' ? <Loader2 className="h-4 w-4 animate-spin" /> : <><RefreshCw className="mr-1 h-4 w-4" />Guardar</>}
+        </Button>
+        <Button
+          onClick={handleTest}
+          disabled={busyAction !== null || status !== 'connected'}
+          variant="outline"
+          size="sm"
+          className="flex-1 h-10 border-border btn-secondary text-xs font-black uppercase tracking-wide"
+        >
+          {busyAction === 'test' ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Send className="mr-1 h-4 w-4" />Probar</>}
+        </Button>
+      </div>
+
+      {/* Row 5: webhook URL copiable */}
+      <div className="px-4 py-3 border-t border-border">
+        <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-1">Webhook URL</p>
+        <button
+          type="button"
+          onClick={copyWebhook}
+          className="w-full flex items-center gap-2 px-3 py-2 bg-background border border-border rounded text-[11px] font-mono text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors group"
+        >
+          <Copy className="w-3 h-3 shrink-0 group-hover:text-primary" />
+          <span className="truncate flex-1 text-left">{webhookUrl}</span>
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// ══════════════════════════════════════════════════════════════════
+//  Page wrapper
+// ══════════════════════════════════════════════════════════════════
+const SettingsPage = () => {
+  return (
+    <>
+      <Helmet><title>Integraciones - DRIP BURGER</title></Helmet>
 
       <div className="min-h-screen bg-background">
         <Header />
 
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-12 max-w-4xl">
-          <div className="flex items-center gap-4 mb-10">
-            <Button asChild variant="outline" size="icon" className="h-10 w-10 rounded-full border-border">
-              <Link to="/gestion">
-                <ArrowLeft className="h-5 w-5" />
-              </Link>
+        <div className="container mx-auto px-3 sm:px-4 lg:px-6 py-4 max-w-4xl">
+          {/* Header con volver — mismo patrón que AdminDashboard */}
+          <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+            <Button asChild variant="outline" size="sm" className="border-border h-8 px-2 text-[11px]">
+              <Link to="/gestion"><ArrowLeft className="mr-1 h-3 w-3" />Volver</Link>
             </Button>
-            <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tighter">
-              Configur<span className="text-primary">ación</span>
+            <h1 className="text-xl sm:text-2xl font-black uppercase tracking-tighter">
+              Integra<span className="text-primary">ciones</span>
             </h1>
+            <div className="w-16" />
           </div>
 
-          {loading ? (
-            <Card className="bg-card border-border">
-              <CardContent className="p-6 space-y-6">
-                <Skeleton className="h-8 w-1/3" />
-                <Skeleton className="h-12 w-full" />
-                <Skeleton className="h-12 w-1/4" />
-              </CardContent>
-            </Card>
-          ) : (
-            <Card className="bg-card border-border shadow-lg">
-              <CardHeader className="pb-6 border-b border-border bg-muted/10">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-primary/10 rounded-lg text-primary">
-                    <Truck className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-2xl font-black uppercase tracking-wide">Costo de Envío</CardTitle>
-                    <CardDescription className="text-base mt-1 font-medium">
-                      Definí el precio estándar para los repartos a domicilio.
-                    </CardDescription>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="pt-8">
-                <form onSubmit={handleSave} className="space-y-8">
-                  <div className="space-y-4 max-w-md">
-                    <Label htmlFor="precio_envio" className="text-sm font-bold uppercase tracking-wider text-muted-foreground">
-                      Precio de Envío (ARS)
-                    </Label>
-                    <div className="relative">
-                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground font-bold">$</span>
-                      <Input
-                        id="precio_envio"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={precioEnvio}
-                        onChange={(e) => setPrecioEnvio(e.target.value)}
-                        className="pl-8 bg-background border-border text-foreground h-14 text-lg font-bold"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <div className="bg-muted/30 p-6 rounded-2xl border border-border">
-                    <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">
-                      Vista previa para clientes
-                    </p>
-                    <div className="bg-background border border-border p-4 rounded-xl inline-block">
-                      {formatShippingPreview(precioEnvio)}
-                    </div>
-                  </div>
-
-                  <Button type="submit" size="lg" className="btn-primary h-14 px-8 text-lg" disabled={saving}>
-                    <Save className="mr-2 h-5 w-5" />
-                    {saving ? 'Guardando...' : 'Guardar Cambios'}
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
-          )}
+          {/* Cards apiladas */}
+          <div className="space-y-4">
+            <WhatsAppCard />
+            <MercadoPagoCard />
+          </div>
         </div>
       </div>
     </>
