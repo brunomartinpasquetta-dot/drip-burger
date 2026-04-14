@@ -48,30 +48,21 @@ const Header = () => {
                   title="Panel de Admin"
                 >
                   <LayoutDashboard className="w-3 h-3" />
-                  Panel
+                  Panel Admin
                 </Link>
               )}
             </div>
 
-            {/* Desktop Navigation */}
+            {/* Desktop Navigation — Menú solo para usuarios no-admin; Reportes movido al panel admin */}
             <nav className="hidden md:flex items-center space-x-8">
-              <Link
-                to="/menu"
-                className={`text-sm font-bold uppercase tracking-wider transition-colors hover:text-primary ${
-                  isActive('/menu') ? 'text-primary' : 'text-foreground/80'
-                }`}
-              >
-                Menú
-              </Link>
-
-              {isAuthenticated && isAdmin && (
+              {!isAdmin && (
                 <Link
-                  to="/gestion/reportes"
+                  to="/menu"
                   className={`text-sm font-bold uppercase tracking-wider transition-colors hover:text-primary ${
-                    isActive('/gestion/reportes') ? 'text-primary' : 'text-foreground/80'
+                    isActive('/menu') ? 'text-primary' : 'text-foreground/80'
                   }`}
                 >
-                  Reportes
+                  Menú
                 </Link>
               )}
             </nav>

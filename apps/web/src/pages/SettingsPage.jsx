@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
+import pb from '@/lib/pocketbaseClient';
 import Header from '@/components/Header.jsx';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,12 +20,22 @@ import {
   Power,
   AlertCircle,
   Loader2,
+  Truck,
+  Clock,
+  Save,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   waStatus, waConnect, waDisconnect, waTest, waToggle,
   mpStatus, mpSave, mpTest, mpToggle,
 } from '@/lib/integrationsClient';
+import { computeIsOpen } from '@/hooks/useStoreHours';
+
+const formatShippingPreview = (price) => {
+  const num = Number(price) || 0;
+  if (num === 0) return 'Envío gratis 🛵';
+  return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(num);
+};
 
 // ── Helpers de presentación ──────────────────────────────────────
 const BORDER_BY_STATUS = {
@@ -54,6 +65,167 @@ const StatusDot = ({ status }) => (
     {STATUS_LABEL[status] || 'Desconocido'}
   </span>
 );
+
+// ══════════════════════════════════════════════════════════════════
+//  Operación — Costo de envío + Horarios de atención
+//  Un solo card con 2 secciones separadas por border-t.
+//  Border-l dinámico: verde si está abierto, rojo si está cerrado
+//  (el estado de apertura es visible de un vistazo sin scrollear).
+// ══════════════════════════════════════════════════════════════════
+const OperacionCard = () => {
+  const [settingsId, setSettingsId] = useState(null);
+  const [precioEnvio, setPrecioEnvio] = useState(0);
+  const [horaApertura, setHoraApertura] = useState('20:00');
+  const [horaCierre, setHoraCierre] = useState('23:00');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [, forceTick] = useState(0);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const records = await pb.collection('settings').getList(1, 1, { requestKey: null });
+        if (records.items.length > 0) {
+          const rec = records.items[0];
+          setSettingsId(rec.id);
+          setPrecioEnvio(rec.precio_envio || 0);
+          setHoraApertura(rec.hora_apertura || '20:00');
+          setHoraCierre(rec.hora_cierre || '23:00');
+        }
+      } catch (err) {
+        console.error('[OperacionCard] load failed:', err);
+        toast.error('Error al cargar la configuración');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  // Re-render cada 60s para que el preview de "Abierto/Cerrado" se actualice
+  useEffect(() => {
+    const id = setInterval(() => forceTick(t => t + 1), 60000);
+    return () => clearInterval(id);
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const data = {
+        precio_envio: Number(precioEnvio),
+        hora_apertura: horaApertura,
+        hora_cierre: horaCierre,
+      };
+      if (settingsId) {
+        await pb.collection('settings').update(settingsId, data, { requestKey: null });
+      } else {
+        const nueva = await pb.collection('settings').create(data, { requestKey: null });
+        setSettingsId(nueva.id);
+      }
+      toast.success('Configuración guardada');
+    } catch (err) {
+      console.error('[OperacionCard] save failed:', err?.response?.data || err);
+      toast.error(`Error al guardar: ${err.message || err}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return <Skeleton className="h-64 w-full rounded-xl" />;
+  }
+
+  const previewIsOpen = computeIsOpen(horaApertura, horaCierre);
+  const borderCls = previewIsOpen ? 'border-l-green-500' : 'border-l-red-500';
+
+  return (
+    <div className={`bg-card border border-border border-l-[6px] ${borderCls} rounded-lg overflow-hidden shadow-sm`}>
+      {/* Row 1: título + chip de estado abierto/cerrado en vivo */}
+      <div className="flex items-center justify-between gap-3 p-4 pb-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <Truck className="w-5 h-5 text-primary shrink-0" />
+          <h3 className="text-lg sm:text-xl font-black uppercase tracking-tight">Operación</h3>
+        </div>
+        <span
+          className={`inline-flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-black uppercase tracking-wide border ${
+            previewIsOpen
+              ? 'bg-green-500/20 text-green-400 border-green-500/50'
+              : 'bg-red-500/20 text-red-400 border-red-500/50'
+          }`}
+        >
+          <span className="text-[8px]">●</span>
+          {previewIsOpen ? 'Abierto ahora' : 'Cerrado ahora'}
+        </span>
+      </div>
+
+      {/* Sección: Costo de envío */}
+      <div className="px-4 pb-3">
+        <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-2">Costo de envío</p>
+        <div className="flex items-end gap-3 flex-wrap">
+          <div className="flex-1 min-w-[180px]">
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-bold text-sm">$</span>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={precioEnvio}
+                onChange={(e) => setPrecioEnvio(e.target.value)}
+                className="pl-7 bg-background border-border text-foreground h-10 text-sm font-black tabular-nums"
+                placeholder="0"
+              />
+            </div>
+          </div>
+          <span className="text-xs font-bold text-muted-foreground">
+            Preview: <span className="text-foreground">{formatShippingPreview(precioEnvio)}</span>
+          </span>
+        </div>
+      </div>
+
+      {/* Sección: Horarios de atención */}
+      <div className="px-4 py-3 border-t border-border">
+        <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-2">
+          <Clock className="inline w-3 h-3 mr-1 -mt-0.5" />
+          Horarios de atención
+        </p>
+        <div className="grid grid-cols-2 gap-3 max-w-sm">
+          <div className="space-y-1">
+            <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Apertura</label>
+            <Input
+              type="time"
+              value={horaApertura}
+              onChange={(e) => setHoraApertura(e.target.value)}
+              className="bg-background border-border text-foreground h-10 text-sm font-black tabular-nums"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Cierre</label>
+            <Input
+              type="time"
+              value={horaCierre}
+              onChange={(e) => setHoraCierre(e.target.value)}
+              className="bg-background border-border text-foreground h-10 text-sm font-black tabular-nums"
+            />
+          </div>
+        </div>
+        <p className="text-[10px] text-muted-foreground font-medium mt-2">
+          Fuera del horario el botón "Hacer Pedido" queda deshabilitado. Soporta cruce de medianoche.
+        </p>
+      </div>
+
+      {/* Row: Guardar */}
+      <div className="px-4 py-3 border-t border-border">
+        <Button
+          onClick={handleSave}
+          disabled={saving}
+          size="sm"
+          className="btn-primary h-10 px-4 text-xs font-black uppercase tracking-wide shadow-sm"
+        >
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Save className="mr-1 h-4 w-4" />Guardar cambios</>}
+        </Button>
+      </div>
+    </div>
+  );
+};
 
 // ══════════════════════════════════════════════════════════════════
 //  WhatsApp Card
@@ -546,7 +718,7 @@ const MercadoPagoCard = () => {
 const SettingsPage = () => {
   return (
     <>
-      <Helmet><title>Integraciones - DRIP BURGER</title></Helmet>
+      <Helmet><title>Configuración - DRIP BURGER</title></Helmet>
 
       <div className="min-h-screen bg-background">
         <Header />
@@ -558,15 +730,21 @@ const SettingsPage = () => {
               <Link to="/gestion"><ArrowLeft className="mr-1 h-3 w-3" />Volver</Link>
             </Button>
             <h1 className="text-xl sm:text-2xl font-black uppercase tracking-tighter">
-              Integra<span className="text-primary">ciones</span>
+              Configur<span className="text-primary">ación</span>
             </h1>
             <div className="w-16" />
           </div>
 
-          {/* Cards apiladas */}
+          {/* Operación primero (lo que cambia más seguido), integraciones abajo */}
           <div className="space-y-4">
-            <WhatsAppCard />
-            <MercadoPagoCard />
+            <OperacionCard />
+            <div className="pt-2">
+              <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-2 px-1">Integraciones</p>
+              <div className="space-y-4">
+                <WhatsAppCard />
+                <MercadoPagoCard />
+              </div>
+            </div>
           </div>
         </div>
       </div>

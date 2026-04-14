@@ -793,6 +793,13 @@ const AdminDashboard = () => {
                 </TabsTrigger>
                 <TabsTrigger value="products" className="font-bold uppercase tracking-wide py-1 px-2.5 text-[11px] data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">Productos</TabsTrigger>
                 <TabsTrigger value="customers" className="font-bold uppercase tracking-wide py-1 px-2.5 text-[11px] data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">Clientes</TabsTrigger>
+                <Link
+                  to="/menu"
+                  className="font-bold uppercase tracking-wide py-1 px-2.5 text-[11px] inline-flex items-center justify-center rounded-sm text-foreground/70 hover:text-foreground hover:bg-muted/20 transition-colors border-l border-border/50 ml-0.5"
+                  title="Ir al menú de clientes"
+                >
+                  Menú
+                </Link>
               </TabsList>
 
               <div className="flex-1 flex justify-end gap-1.5">
