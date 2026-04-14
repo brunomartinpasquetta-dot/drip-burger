@@ -13,6 +13,10 @@ build/
 # PocketBase data
 apps/pocketbase/pb_data/
 
+# WhatsApp session (whatsapp-web.js LocalAuth)
+apps/api/wa-session/
+apps/api/.wwebjs_cache/
+
 # Logs
 *.log
 npm-debug.log*
@@ -27,3 +31,6 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# Dumps de contexto de sesión
+SESSION_CONTEXT.txt
