@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 import pb from '@/lib/pocketbaseClient';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -10,9 +10,9 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { AlertCircle, Loader2 } from 'lucide-react';
 
-const AuthModal = ({ isOpen, onClose }) => {
+const AuthModal = ({ isOpen, onClose, defaultTab = 'login' }) => {
   const { login } = useAuth();
-  const [activeTab, setActiveTab] = useState('login');
+  const [activeTab, setActiveTab] = useState(defaultTab);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -30,6 +30,16 @@ const AuthModal = ({ isOpen, onClose }) => {
     email: '',
     password: ''
   });
+  // "Recordar mis datos" en el registro — por defecto marcado
+  const [regRememberMe, setRegRememberMe] = useState(true);
+
+  // Reset tab + errores al abrir/cerrar con un defaultTab distinto
+  useEffect(() => {
+    if (isOpen) {
+      setActiveTab(defaultTab);
+      setError('');
+    }
+  }, [isOpen, defaultTab]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -78,8 +88,8 @@ const AuthModal = ({ isOpen, onClose }) => {
         role: 'CUSTOMER'
       }, { requestKey: null });
 
-      // 3. Auto-login after registration (default to rememberMe = true for new accounts)
-      await login(regData.email, regData.password, true);
+      // 3. Auto-login después del registro, respetando el checkbox "Recordar mis datos"
+      await login(regData.email, regData.password, regRememberMe);
       onClose();
     } catch (err) {
       setError(err.message || 'Error al crear la cuenta');
@@ -199,6 +209,16 @@ const AuthModal = ({ isOpen, onClose }) => {
                 <div className="space-y-2">
                   <Label htmlFor="reg-password">Contraseña</Label>
                   <Input id="reg-password" name="password" type="password" minLength={8} value={regData.password} onChange={handleRegChange} required className="bg-background" />
+                </div>
+                <div className="flex items-center space-x-2 pt-2">
+                  <Checkbox
+                    id="reg-remember"
+                    checked={regRememberMe}
+                    onCheckedChange={setRegRememberMe}
+                  />
+                  <Label htmlFor="reg-remember" className="text-sm font-medium leading-none cursor-pointer">
+                    Recordar mis datos
+                  </Label>
                 </div>
                 <Button type="submit" className="w-full btn-primary font-bold uppercase tracking-wide mt-2" disabled={isLoading}>
                   {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Crear Cuenta'}

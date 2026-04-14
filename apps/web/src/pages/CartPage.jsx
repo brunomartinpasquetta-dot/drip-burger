@@ -5,6 +5,7 @@ import { Helmet } from 'react-helmet';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 import { useCart } from '@/contexts/CartContext.jsx';
 import { useShippingPrice } from '@/hooks/useShippingPrice.js';
+import { useStoreHours } from '@/hooks/useStoreHours';
 import pb from '@/lib/pocketbaseClient';
 import { cn } from '@/lib/utils.js';
 import Header from '@/components/Header.jsx';
@@ -25,6 +26,7 @@ const CartPage = () => {
   const { currentUser, isAuthenticated } = useAuth();
   const { cartItems, updateQuantity, removeFromCart, getCartTotal, clearCart } = useCart();
   const { shippingPrice, loading: shippingLoading, formatShipping } = useShippingPrice();
+  const { isOpen: storeIsOpen, horaApertura, horaCierre, loading: hoursLoading } = useStoreHours();
   const navigate = useNavigate();
 
   const [formData, setFormData] = useState({
@@ -68,6 +70,16 @@ const CartPage = () => {
   };
 
   const handlePaymentClick = async () => {
+    if (hoursLoading) {
+      toast.error('Verificando horario de atención, esperá unos segundos.');
+      return;
+    }
+
+    if (!storeIsOpen) {
+      toast.error(`Estamos cerrados. Horario de atención: ${horaApertura || '—'} a ${horaCierre || '—'}`);
+      return;
+    }
+
     if (!validateForm()) {
       toast.error('Completá todos los campos requeridos marcados en rojo');
       return;
@@ -369,7 +381,7 @@ const CartPage = () => {
                     </div>
                   </div>
 
-                  <div className="border-t border-border pt-6 mb-8">
+                  <div className="border-t border-border pt-6 mb-6">
                     <div className="flex justify-between items-end">
                       <span className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Total</span>
                       {shippingLoading ? (
@@ -382,13 +394,34 @@ const CartPage = () => {
                     </div>
                   </div>
 
+                  {/* Banner de local cerrado — bloquea el submit */}
+                  {!hoursLoading && !storeIsOpen && (
+                    <div className="mb-4 p-4 rounded-lg border-2 border-red-500/50 bg-red-500/10">
+                      <p className="text-sm font-black uppercase tracking-wide text-red-400 mb-1">
+                        ⛔ Local cerrado
+                      </p>
+                      <p className="text-xs text-red-300 font-medium">
+                        No se pueden hacer pedidos fuera del horario de atención.
+                      </p>
+                      {horaApertura && horaCierre && (
+                        <p className="text-xs text-muted-foreground font-bold mt-1 tabular-nums">
+                          Horario: {horaApertura} — {horaCierre}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
                   <Button
                     onClick={handlePaymentClick}
-                    className="w-full h-14 text-lg mb-4 font-black uppercase tracking-widest hover:brightness-110 active:scale-[0.98] transition-all duration-200"
+                    className="w-full h-14 text-lg mb-4 font-black uppercase tracking-widest hover:brightness-110 active:scale-[0.98] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                     style={{ backgroundColor: 'var(--accent-orange)', color: 'var(--text-dark)' }}
-                    disabled={isSubmitting || shippingLoading}
+                    disabled={isSubmitting || shippingLoading || hoursLoading || !storeIsOpen}
                   >
-                    {isSubmitting ? 'Procesando...' : (formData.forma_pago === 'Transferencia' ? 'Pagar' : 'Hacer Pedido')}
+                    {isSubmitting
+                      ? 'Procesando...'
+                      : !storeIsOpen && !hoursLoading
+                        ? 'Cerrado — No se puede pedir'
+                        : (formData.forma_pago === 'Transferencia' ? 'Pagar' : 'Hacer Pedido')}
                   </Button>
 
                   <Button asChild variant="outline" className="w-full h-12 font-bold uppercase tracking-widest bg-transparent border-border hover:bg-muted text-foreground">
