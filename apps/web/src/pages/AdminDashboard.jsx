@@ -503,7 +503,15 @@ const AdminDashboard = () => {
   const [pendingIds, setPendingIds] = useState(() => new Set());
   const [slotOccupancy, setSlotOccupancy] = useState([]);
   const [maxMedallionsPerSlot, setMaxMedallionsPerSlot] = useState(20);
+  const [activeTab, setActiveTab] = useState('orders');
   const navigate = useNavigate();
+
+  const TAB_TITLES = {
+    orders: 'Pedidos',
+    kitchen: 'Cocina',
+    products: 'Productos',
+    customers: 'Clientes',
+  };
 
   const isPending = (key) => pendingIds.has(key);
   const markPending = (key, pending) => {
@@ -788,13 +796,13 @@ const AdminDashboard = () => {
 
   return (
     <>
-      <Helmet><title>Admin - DRIP BURGER</title></Helmet>
+      <Helmet><title>{TAB_TITLES[activeTab] || 'Admin'} - DRIP BURGER</title></Helmet>
 
       <div className="min-h-screen bg-background">
         <Header />
 
         <div className="container mx-auto px-3 sm:px-4 lg:px-6 py-2">
-          <Tabs defaultValue="orders" className="space-y-2">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-2">
             {/* Header inline: volver a la izquierda, tabs centrados, acciones a la derecha */}
             <div className="flex items-center gap-2 flex-wrap">
               <div className="flex-1 flex justify-start">
@@ -804,18 +812,18 @@ const AdminDashboard = () => {
               </div>
 
               <TabsList className="bg-card border border-border p-0.5 h-auto flex gap-0">
-                <TabsTrigger value="orders" className="font-bold uppercase tracking-wide py-1 px-2.5 text-[11px] data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                <TabsTrigger value="orders" className="font-bold uppercase tracking-wide py-1 px-2.5 text-[11px] data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:text-sm data-[state=active]:font-black data-[state=active]:px-3.5 data-[state=active]:py-1.5">
                   Pedidos {orders.filter(o => o.orderStatus === ORDER_STATUS.PENDING || !o.orderStatus).length > 0 && (
                     <span className="ml-1 bg-yellow-500 text-black text-[9px] rounded-full px-1 leading-3">
                       {orders.filter(o => o.orderStatus === ORDER_STATUS.PENDING || !o.orderStatus).length}
                     </span>
                   )}
                 </TabsTrigger>
-                <TabsTrigger value="kitchen" className="font-bold uppercase tracking-wide py-1 px-2.5 text-[11px] data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                <TabsTrigger value="kitchen" className="font-bold uppercase tracking-wide py-1 px-2.5 text-[11px] data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:text-sm data-[state=active]:font-black data-[state=active]:px-3.5 data-[state=active]:py-1.5">
                   <ChefHat className="mr-1 h-3 w-3" />Cocina
                 </TabsTrigger>
-                <TabsTrigger value="products" className="font-bold uppercase tracking-wide py-1 px-2.5 text-[11px] data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">Productos</TabsTrigger>
-                <TabsTrigger value="customers" className="font-bold uppercase tracking-wide py-1 px-2.5 text-[11px] data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">Clientes</TabsTrigger>
+                <TabsTrigger value="products" className="font-bold uppercase tracking-wide py-1 px-2.5 text-[11px] data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:text-sm data-[state=active]:font-black data-[state=active]:px-3.5 data-[state=active]:py-1.5">Productos</TabsTrigger>
+                <TabsTrigger value="customers" className="font-bold uppercase tracking-wide py-1 px-2.5 text-[11px] data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:text-sm data-[state=active]:font-black data-[state=active]:px-3.5 data-[state=active]:py-1.5">Clientes</TabsTrigger>
                 <Link
                   to="/menu"
                   className="font-bold uppercase tracking-wide py-1 px-2.5 text-[11px] inline-flex items-center justify-center rounded-sm text-foreground/70 hover:text-foreground hover:bg-muted/20 transition-colors border-l border-border/50 ml-0.5"
@@ -837,13 +845,13 @@ const AdminDashboard = () => {
 
             {/* ── TAB: PEDIDOS ── */}
             <TabsContent value="orders" className="space-y-2">
-              {/* Filtros inline: horario + estado */}
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground w-14 shrink-0">Horario</span>
+              {/* Filtros inline: horarios/ocupación + estado */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground w-20 shrink-0">Horarios/Ocupación</span>
                   <button
                     onClick={() => setFilters({ ...filters, timeSlot: 'all' })}
-                    className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wide border transition-colors ${
+                    className={`px-3 py-1 rounded text-xs font-black uppercase tracking-wide border transition-colors ${
                       filters.timeSlot === 'all'
                         ? 'bg-primary text-primary-foreground border-primary'
                         : 'bg-card border-border text-muted-foreground hover:text-foreground hover:border-primary/40'
@@ -851,22 +859,41 @@ const AdminDashboard = () => {
                   >
                     Todos
                   </button>
-                  {timeSlots.map(slot => (
-                    <button
-                      key={slot}
-                      onClick={() => setFilters({ ...filters, timeSlot: slot })}
-                      className={`px-2 py-0.5 rounded text-[10px] font-black tabular-nums border transition-colors ${
-                        filters.timeSlot === slot
-                          ? 'bg-primary text-primary-foreground border-primary'
-                          : 'bg-card border-border text-muted-foreground hover:text-foreground hover:border-primary/40'
-                      }`}
-                    >
-                      {slot}
-                    </button>
-                  ))}
+                  {timeSlots.map(slot => {
+                    const info = slotOccupancy.find((s) => s.slot === slot);
+                    const active = filters.timeSlot === slot;
+                    // Color de ocupación (verde/amarillo/rojo) solo cuando no está activo;
+                    // el botón activo mantiene el naranja primary del patrón general.
+                    let inactiveCls = 'bg-card border-border text-muted-foreground hover:text-foreground hover:border-primary/40';
+                    if (info) {
+                      if (info.full) {
+                        inactiveCls = 'bg-red-500/20 border-red-500/40 text-red-500 hover:bg-red-500/30';
+                      } else if (info.available <= 3) {
+                        inactiveCls = 'bg-yellow-500/20 border-yellow-500/40 text-yellow-500 hover:bg-yellow-500/30';
+                      } else if (info.usedMedallions > 0) {
+                        inactiveCls = 'bg-green-500/20 border-green-500/40 text-green-500 hover:bg-green-500/30';
+                      }
+                    }
+                    return (
+                      <button
+                        key={slot}
+                        onClick={() => setFilters({ ...filters, timeSlot: slot })}
+                        className={`px-3 py-1 rounded text-xs font-black tabular-nums border transition-colors ${
+                          active ? 'bg-primary text-primary-foreground border-primary' : inactiveCls
+                        }`}
+                      >
+                        {slot}
+                        {info && (
+                          <span className={`ml-1.5 ${active ? 'opacity-80' : 'opacity-90'}`}>
+                            ·{info.usedMedallions}/{maxMedallionsPerSlot}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground w-14 shrink-0">Estado</span>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground w-20 shrink-0">Estado</span>
                   {[
                     { value: 'all', label: 'Todos' },
                     { value: ORDER_STATUS.PENDING, label: 'Pendiente' },
@@ -878,7 +905,7 @@ const AdminDashboard = () => {
                     <button
                       key={opt.value}
                       onClick={() => setFilters({ ...filters, status: opt.value })}
-                      className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wide border transition-colors ${
+                      className={`px-3 py-1 rounded text-xs font-black uppercase tracking-wide border transition-colors ${
                         filters.status === opt.value
                           ? 'bg-primary text-primary-foreground border-primary'
                           : 'bg-card border-border text-muted-foreground hover:text-foreground hover:border-primary/40'
@@ -888,26 +915,6 @@ const AdminDashboard = () => {
                     </button>
                   ))}
                 </div>
-                {slotOccupancy.length > 0 && (
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground w-14 shrink-0">Ocupación</span>
-                    {slotOccupancy.map((info) => {
-                      const chipCls = info.full
-                        ? 'bg-red-500/20 text-red-500 border-red-500/40'
-                        : info.available <= 3
-                          ? 'bg-yellow-500/20 text-yellow-500 border-yellow-500/40'
-                          : 'bg-green-500/20 text-green-500 border-green-500/40';
-                      return (
-                        <span
-                          key={info.slot}
-                          className={`px-2 py-0.5 rounded text-[10px] font-black tabular-nums border ${chipCls}`}
-                        >
-                          {info.slot} {info.usedMedallions}/{maxMedallionsPerSlot} med
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
               </div>
 
               {loading ? (

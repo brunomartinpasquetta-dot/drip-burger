@@ -54,42 +54,42 @@ const Header = () => {
             <nav className="hidden md:flex items-center space-x-8" />
 
             {/* Global Actions Container (Mobile + Desktop) */}
-            <div className="flex items-center space-x-2 sm:space-x-4">
-              
+            <div className="flex items-center space-x-2 sm:space-x-3">
+
               {/* Cart Icon */}
               <div className="relative flex items-center">
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="hover:text-primary hover:bg-primary/10 transition-colors relative h-10 w-10 sm:h-11 sm:w-11"
+                  className="hover:text-primary hover:bg-primary/10 transition-colors relative h-9 w-9 sm:h-10 sm:w-10"
                   onClick={() => navigate('/carrito')}
                   aria-label="Ir al carrito"
                 >
-                  <ShoppingCart className="!h-8 !w-8 sm:!h-9 sm:!w-9" />
+                  <ShoppingCart className="!h-7 !w-7 sm:!h-8 sm:!w-8" />
                   {cartCount > 0 && (
-                    <span className="absolute top-0 right-0 bg-[#F5A800] text-white text-[10px] font-black rounded-full w-5 h-5 flex items-center justify-center shadow-md border-2 border-background">
+                    <span className="absolute -top-0.5 -right-0.5 bg-[#F5A800] text-white text-[10px] font-black rounded-full w-5 h-5 flex items-center justify-center shadow-md border-2 border-background">
                       {cartCount}
                     </span>
                   )}
                 </Button>
               </div>
 
-              {/* Desktop User Actions */}
-              <div className="hidden md:flex items-center space-x-4">
+              {/* Desktop: Mi Cuenta + PANEL ADMIN (a la derecha del carrito) */}
+              <div className="hidden md:flex items-center space-x-3">
                 {!isAuthenticated ? (
                   <Button
                     variant="default"
-                    className="btn-primary font-bold uppercase tracking-wide text-xs h-9 px-3"
+                    className="btn-primary font-bold uppercase tracking-wide text-sm h-11 px-4"
                     onClick={() => setIsAuthModalOpen(true)}
                   >
-                    <User className="w-4 h-4 mr-1.5" />
+                    <User className="w-5 h-5 mr-1.5" />
                     MI CUENTA
                   </Button>
                 ) : (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="hover:text-primary hover:bg-primary/10 transition-colors h-10 w-10">
-                        <User className="h-5 w-5" />
+                      <Button variant="ghost" size="icon" className="hover:text-primary hover:bg-primary/10 transition-colors h-11 w-11">
+                        <User className="h-7 w-7" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="bg-card border-border w-48">
