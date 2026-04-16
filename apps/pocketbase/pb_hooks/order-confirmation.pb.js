@@ -134,6 +134,20 @@ onRecordCreate((e) => {
     }
   }
 
+  // ── Asignar jornada abierta (si existe) al pedido ────────────────
+  // Si hay una jornada con estado="abierta", el pedido se asocia a ella
+  // para que el cierre de caja pueda agregar totales por jornada.
+  // Si no hay jornada abierta, jornadaId queda null (el pedido igual se crea).
+  try {
+    const jornadaRec = $app.findFirstRecordByFilter("jornadas", `estado = "abierta"`);
+    if (jornadaRec) {
+      e.record.set("jornadaId", jornadaRec.get("id"));
+    }
+  } catch (err) {
+    // No hay jornada abierta o la collection todavía no existe (pre-migración).
+    // No bloqueamos la creación del pedido por esto.
+  }
+
   // ── Generación de orderNumber y estados iniciales ────────────────
   const suffix = Math.random().toString(36).substring(2, 8).toUpperCase();
   const orderNumber = "ORD-" + dateStr + "-" + suffix;

@@ -14,6 +14,7 @@ import ConfirmationPage from './pages/ConfirmationPage.jsx';
 import AdminDashboard from './pages/AdminDashboard.jsx';
 import SalesReportingPage from './pages/SalesReportingPage.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
+import EditOrdersPage from './pages/EditOrdersPage.jsx';
 import { Toaster } from '@/components/ui/sonner';
 
 function App() {
@@ -70,6 +71,14 @@ function App() {
               element={
                 <AdminRoute>
                   <SettingsPage />
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="/gestion/editar-pedidos"
+              element={
+                <AdminRoute>
+                  <EditOrdersPage />
                 </AdminRoute>
               }
             />

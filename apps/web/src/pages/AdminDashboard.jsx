@@ -3,7 +3,7 @@ import { Helmet } from 'react-helmet';
 import { Link, useNavigate } from 'react-router-dom';
 import pb from '@/lib/pocketbaseClient';
 import apiServerClient from '@/lib/apiServerClient';
-import { ORDER_STATUS, PAYMENT_STATUS, MEDALLION_LABELS } from '@/lib/orderConstants';
+import { ORDER_STATUS, PAYMENT_STATUS, FORMA_PAGO, MEDALLION_LABELS } from '@/lib/orderConstants';
 import Header from '@/components/Header.jsx';
 import ProductForm from '@/components/ProductForm.jsx';
 import ImageUploadButton from '@/components/ImageUploadButton.jsx';
@@ -13,7 +13,19 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
-import { Plus, Pencil, Trash2, Send, Settings, BarChart3, ChefHat, CheckCircle2, Banknote, MapPin, Phone, Clock, ArrowLeft } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Plus, Pencil, Trash2, Send, ChefHat, CheckCircle2, Banknote, MapPin, Phone, Clock, ArrowLeft, XCircle, Wallet, DollarSign, Loader2, Minus, TrendingUp, TrendingDown, BarChart3, Settings, Utensils } from 'lucide-react';
+import { SettingsContent } from './SettingsPage.jsx';
+import { ReportsContent } from './SalesReportingPage.jsx';
+import MenuPreviewContent from './admin/MenuPreviewContent.jsx';
 import { toast } from 'sonner';
 
 const formatPrice = (price) => {
@@ -29,6 +41,7 @@ const STATUS_BORDER_COLOR = {
   [ORDER_STATUS.READY]: 'border-l-cyan-500',
   [ORDER_STATUS.IN_TRANSIT]: 'border-l-orange-500',
   [ORDER_STATUS.COMPLETED]: 'border-l-green-500',
+  [ORDER_STATUS.CANCELLED]: 'border-l-gray-500',
 };
 
 // ── Vista COCINA: selección de pedidos + agregación de productos ─
@@ -485,6 +498,573 @@ const KitchenView = ({ orders, onSendToKitchen, onMarkReady, isPending }) => {
   );
 };
 
+// ── Caja: apertura/cierre de jornada ──────────────────────────────
+const formatPriceArs = (value) =>
+  new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
+
+// Devuelve la hora actual en zona Argentina (UTC-3) como "HH:mm".
+const horaActualAr = () => {
+  const now = new Date();
+  const arMs = now.getTime() + (-3 * 60 * 60 * 1000) - now.getTimezoneOffset() * 60 * 1000;
+  const arDate = new Date(arMs);
+  const hh = String(arDate.getHours()).padStart(2, '0');
+  const mm = String(arDate.getMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+};
+
+// Devuelve la fecha actual en AR como "YYYY-MM-DD HH:mm:ss.sssZ" para PB DateField.
+const fechaAhoraIso = () => new Date().toISOString();
+
+// Formatea una fecha ISO a "HH:mm" en AR. Tolera inputs falsy.
+const timeOfDayAr = (iso) => {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    const ar = new Date(d.getTime() + (-3 * 60 * 60 * 1000) - d.getTimezoneOffset() * 60 * 1000);
+    return `${String(ar.getHours()).padStart(2, '0')}:${String(ar.getMinutes()).padStart(2, '0')}`;
+  } catch (e) {
+    return '—';
+  }
+};
+
+const CajaCard = ({ currentUserId, jornada, jornadaLoading, onJornadaChange }) => {
+  const [jornadaOrders, setJornadaOrders] = useState([]);
+  const [movimientos, setMovimientos] = useState([]);
+
+  const [montoInicial, setMontoInicial] = useState('');
+  const [opening, setOpening] = useState(false);
+
+  // Modal de cierre
+  const [closeOpen, setCloseOpen] = useState(false);
+  const [montoCierre, setMontoCierre] = useState('');
+  const [closing, setClosing] = useState(false);
+
+  // Modal de movimiento (ingreso/egreso)
+  const [movOpen, setMovOpen] = useState(null); // 'ingreso' | 'egreso' | null
+  const [movMonto, setMovMonto] = useState('');
+  const [movMotivo, setMovMotivo] = useState('');
+  const [movSaving, setMovSaving] = useState(false);
+
+  // ── Carga de pedidos + movimientos scoped a la jornada activa ──
+  useEffect(() => {
+    let cancelled = false;
+    if (!jornada) {
+      setJornadaOrders([]);
+      setMovimientos([]);
+      return () => { cancelled = true; };
+    }
+    const loadData = async () => {
+      try {
+        const [ordsRes, movsRes] = await Promise.all([
+          pb.collection('orders').getFullList({
+            filter: `jornadaId = "${jornada.id}"`,
+            requestKey: null,
+          }),
+          pb.collection('movimientos_caja').getFullList({
+            filter: `jornadaId = "${jornada.id}"`,
+            sort: '-created',
+            requestKey: null,
+          }),
+        ]);
+        if (cancelled) return;
+        setJornadaOrders(ordsRes);
+        setMovimientos(movsRes);
+      } catch (err) {
+        console.error('[CajaCard] data load failed:', err);
+      }
+    };
+    loadData();
+    const id = setInterval(loadData, 30000);
+    return () => { cancelled = true; clearInterval(id); };
+    // Depende solo del id: evita re-fetches cuando el parent refetchea jornada
+    // y devuelve el mismo record con referencia nueva.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jornada?.id]);
+
+  // ── Cálculos de totales ────────────────────────────────────────
+  const activeOrders = jornadaOrders.filter((o) => o.orderStatus !== ORDER_STATUS.CANCELLED);
+  const cancelledOrders = jornadaOrders.filter((o) => o.orderStatus === ORDER_STATUS.CANCELLED);
+  const cobrosEfectivo = activeOrders
+    .filter((o) => o.paymentMethod === FORMA_PAGO.CASH && o.paymentStatus === PAYMENT_STATUS.PAID)
+    .reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
+  const cobrosTransferencia = activeOrders
+    .filter((o) => o.paymentMethod === FORMA_PAGO.TRANSFER && o.paymentStatus === PAYMENT_STATUS.PAID)
+    .reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
+  const ingresosManuales = movimientos
+    .filter((m) => m.tipo === 'ingreso')
+    .reduce((sum, m) => sum + (Number(m.monto) || 0), 0);
+  const egresosManuales = movimientos
+    .filter((m) => m.tipo === 'egreso')
+    .reduce((sum, m) => sum + (Number(m.monto) || 0), 0);
+  const fondoInicial = Number(jornada?.montoInicial) || 0;
+  const efectivoEsperado = fondoInicial + cobrosEfectivo + ingresosManuales - egresosManuales;
+  const totalPedidosJornada = activeOrders.length;
+  const pedidosCancelados = cancelledOrders.length;
+  const montoCancelados = cancelledOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
+
+  // Cuadre en vivo dentro del modal de cierre.
+  const montoCierreNum = Number(montoCierre) || 0;
+  const cuadre = montoCierreNum - efectivoEsperado;
+
+  // ── Handlers ───────────────────────────────────────────────────
+  const handleOpen = async () => {
+    const monto = Math.max(0, Number(montoInicial) || 0);
+    if (montoInicial === '' || Number.isNaN(Number(montoInicial))) {
+      toast.error('Ingresá un monto inicial válido');
+      return;
+    }
+    setOpening(true);
+    try {
+      const data = {
+        fecha: fechaAhoraIso(),
+        horaApertura: horaActualAr(),
+        montoInicial: monto,
+        estado: 'abierta',
+      };
+      if (currentUserId) data.adminId = currentUserId;
+      const rec = await pb.collection('jornadas').create(data, { requestKey: null });
+
+      // Adoptar pedidos huérfanos del día: orders sin jornadaId creados
+      // desde las 00:00 AR. Evita que pedidos que entraron antes de abrir
+      // la jornada queden afuera de la caja.
+      try {
+        const startAr = new Date();
+        startAr.setHours(0, 0, 0, 0);
+        const startStr = startAr.toISOString().replace('T', ' ');
+        const orphans = await pb.collection('orders').getFullList({
+          filter: `jornadaId = "" && created >= "${startStr}"`,
+          requestKey: null,
+        });
+        if (orphans.length > 0) {
+          await Promise.all(orphans.map((o) =>
+            pb.collection('orders').update(o.id, { jornadaId: rec.id }, { requestKey: null })
+          ));
+          toast.success(`Jornada iniciada · ${orphans.length} ${orphans.length === 1 ? 'pedido huérfano asociado' : 'pedidos huérfanos asociados'}`);
+        } else {
+          toast.success('Jornada iniciada');
+        }
+      } catch (adoptErr) {
+        console.error('[CajaCard] orphan adoption failed:', adoptErr);
+        toast.success('Jornada iniciada');
+      }
+
+      setMontoInicial('');
+      if (onJornadaChange) onJornadaChange();
+    } catch (err) {
+      console.error('[CajaCard] open failed:', err?.response?.data || err);
+      toast.error(`Error al iniciar jornada (${err?.status || 'sin status'})`);
+    } finally {
+      setOpening(false);
+    }
+  };
+
+  const handleClose = async () => {
+    if (!jornada) return;
+    if (montoCierre === '' || Number.isNaN(Number(montoCierre))) {
+      toast.error('Ingresá el monto de cierre');
+      return;
+    }
+    setClosing(true);
+    try {
+      await pb.collection('jornadas').update(
+        jornada.id,
+        {
+          estado: 'cerrada',
+          horaCierre: horaActualAr(),
+          montoCierre: Math.max(0, montoCierreNum),
+          totalEfectivo: cobrosEfectivo,
+          totalTransferencias: cobrosTransferencia,
+          totalPedidos: totalPedidosJornada,
+          pedidosCancelados,
+          montoCancelados,
+          efectivoEsperado,
+          cuadre,
+        },
+        { requestKey: null }
+      );
+      setMontoCierre('');
+      setCloseOpen(false);
+      toast.success('Jornada cerrada correctamente');
+      if (onJornadaChange) onJornadaChange();
+    } catch (err) {
+      console.error('[CajaCard] close failed:', err?.response?.data || err);
+      toast.error(`Error al cerrar jornada (${err?.status || 'sin status'})`);
+    } finally {
+      setClosing(false);
+    }
+  };
+
+  const openMovModal = (tipo) => {
+    setMovOpen(tipo);
+    setMovMonto('');
+    setMovMotivo('');
+  };
+
+  const handleMovSave = async () => {
+    if (!jornada || !movOpen) return;
+    const monto = Number(movMonto);
+    if (!monto || Number.isNaN(monto) || monto <= 0) {
+      toast.error('Ingresá un monto válido mayor a 0');
+      return;
+    }
+    if (!movMotivo.trim()) {
+      toast.error('Ingresá el motivo');
+      return;
+    }
+    setMovSaving(true);
+    try {
+      const data = {
+        jornadaId: jornada.id,
+        tipo: movOpen,
+        monto,
+        motivo: movMotivo.trim(),
+      };
+      if (currentUserId) data.adminId = currentUserId;
+      const created = await pb.collection('movimientos_caja').create(data, { requestKey: null });
+      setMovimientos((prev) => [created, ...prev]);
+      toast.success(movOpen === 'ingreso' ? 'Ingreso registrado' : 'Egreso registrado');
+      setMovOpen(null);
+    } catch (err) {
+      console.error('[CajaCard] movimiento failed:', err?.response?.data || err);
+      toast.error(`Error al registrar el movimiento (${err?.status || 'sin status'})`);
+    } finally {
+      setMovSaving(false);
+    }
+  };
+
+  if (jornadaLoading) {
+    return <Skeleton className="h-48 w-full rounded-xl" />;
+  }
+
+  // ── Estado A: sin jornada abierta ──────────────────────────────
+  if (!jornada) {
+    return (
+      <div className="max-w-md mx-auto bg-card border border-border border-l-[6px] border-l-yellow-500 rounded-lg overflow-hidden shadow-sm">
+        <div className="p-6 text-center">
+          <Wallet className="w-10 h-10 text-yellow-500 mx-auto mb-3" />
+          <h3 className="text-xl sm:text-2xl font-black uppercase tracking-tight mb-1">No hay jornada abierta</h3>
+          <p className="text-xs text-muted-foreground font-medium mb-5">
+            Ingresá el fondo de caja inicial y abrí la jornada para que los pedidos queden asociados.
+          </p>
+          <div className="space-y-2 text-left">
+            <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground block">
+              Monto inicial (fondo de caja)
+            </label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-bold text-sm">$</span>
+              <Input
+                type="number"
+                min="0"
+                step="1"
+                value={montoInicial}
+                onChange={(e) => setMontoInicial(e.target.value)}
+                placeholder="0"
+                className="pl-7 bg-background border-border text-foreground h-11 text-base font-black tabular-nums"
+              />
+            </div>
+          </div>
+          <Button
+            onClick={handleOpen}
+            disabled={opening}
+            className="w-full mt-4 btn-primary h-12 text-sm font-black uppercase tracking-wide shadow-sm"
+          >
+            {opening ? (
+              <><Loader2 className="mr-2 h-5 w-5 animate-spin" />Iniciando...</>
+            ) : (
+              <><DollarSign className="mr-2 h-5 w-5" />Iniciar Jornada</>
+            )}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Estado B: jornada abierta ──────────────────────────────────
+  const SummaryRow = ({ label, value, colorCls, signo }) => (
+    <div className="flex items-center justify-between gap-3 text-xs">
+      <span className="text-muted-foreground font-bold uppercase tracking-wider">{label}</span>
+      <span className={`font-black tabular-nums ${colorCls || 'text-foreground'}`}>
+        {signo}{formatPriceArs(value)}
+      </span>
+    </div>
+  );
+
+  return (
+    <>
+      <div className="max-w-md mx-auto bg-card border border-border border-l-[6px] border-l-green-500 rounded-lg overflow-hidden shadow-sm">
+        {/* Header */}
+        <div className="px-5 pt-5 pb-3 border-b border-border">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="inline-flex items-center gap-1 bg-green-500/20 text-green-500 border border-green-500/40 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest">
+              <span className="text-[8px]">●</span>
+              Jornada abierta
+            </span>
+          </div>
+          <div className="flex items-baseline justify-between gap-2 flex-wrap">
+            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+              Inicio <span className="text-foreground font-black tabular-nums">{jornada.horaApertura || '—'}</span>
+            </p>
+            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+              Fondo <span className="text-primary font-black tabular-nums">{formatPriceArs(jornada.montoInicial)}</span>
+            </p>
+          </div>
+        </div>
+
+        {/* Resumen en vivo */}
+        <div className="px-5 py-4 space-y-2 bg-background/30">
+          <SummaryRow label="Cobros efectivo" value={cobrosEfectivo} colorCls="text-green-500" signo="+ " />
+          <SummaryRow label="Cobros transferencia" value={cobrosTransferencia} colorCls="text-blue-400" signo="" />
+          <SummaryRow label="Ingresos manuales" value={ingresosManuales} colorCls="text-green-500" signo="+ " />
+          <SummaryRow label="Egresos manuales" value={egresosManuales} colorCls="text-red-500" signo="− " />
+          <div className="border-t border-border pt-2 flex items-baseline justify-between gap-3">
+            <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Efectivo en caja</span>
+            <span className="text-lg font-black text-primary tabular-nums">{formatPriceArs(efectivoEsperado)}</span>
+          </div>
+          <div className="flex items-baseline justify-between gap-3 pt-1 text-[11px] text-muted-foreground">
+            <span className="font-medium">Pedidos: <span className="text-foreground font-black">{totalPedidosJornada}</span></span>
+            {pedidosCancelados > 0 && (
+              <span className="font-medium">Cancelados: <span className="text-red-500 font-black">{pedidosCancelados}</span></span>
+            )}
+          </div>
+        </div>
+
+        {/* Botones de movimiento */}
+        <div className="px-5 py-3 border-t border-border grid grid-cols-2 gap-2">
+          <Button
+            onClick={() => openMovModal('ingreso')}
+            className="h-10 bg-green-600 hover:bg-green-700 text-white font-black uppercase tracking-wide text-xs border-0"
+          >
+            <Plus className="mr-1 h-4 w-4" />Ingreso
+          </Button>
+          <Button
+            onClick={() => openMovModal('egreso')}
+            className="h-10 bg-red-600 hover:bg-red-700 text-white font-black uppercase tracking-wide text-xs border-0"
+          >
+            <Minus className="mr-1 h-4 w-4" />Egreso
+          </Button>
+        </div>
+
+        {/* Lista de movimientos */}
+        <div className="px-5 py-3 border-t border-border">
+          <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">Movimientos</p>
+          {movimientos.length === 0 ? (
+            <p className="text-[11px] text-muted-foreground/70 font-medium italic">
+              Sin movimientos registrados
+            </p>
+          ) : (
+            <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+              {movimientos.map((m) => {
+                const isIngreso = m.tipo === 'ingreso';
+                return (
+                  <div key={m.id} className="flex items-center gap-2 text-[11px] leading-tight">
+                    <span className="text-muted-foreground tabular-nums w-10 shrink-0">{timeOfDayAr(m.created)}</span>
+                    <span className={`font-black tabular-nums w-20 shrink-0 ${isIngreso ? 'text-green-500' : 'text-red-500'}`}>
+                      {isIngreso ? '+' : '−'}{formatPriceArs(m.monto)}
+                    </span>
+                    <span className="text-sm font-medium text-foreground/90 break-words min-w-0 flex-1">
+                      {m.motivo || '—'}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Botón cerrar jornada */}
+        <div className="px-5 py-3 border-t border-border">
+          <Button
+            onClick={() => { setMontoCierre(''); setCloseOpen(true); }}
+            className="w-full h-11 bg-red-600 hover:bg-red-700 text-white font-black uppercase tracking-wide text-sm shadow-sm border-0"
+          >
+            <XCircle className="mr-2 h-5 w-5" />
+            Cerrar Jornada
+          </Button>
+        </div>
+      </div>
+
+      {/* Modal: cierre con resumen completo + cuadre en vivo */}
+      <Dialog open={closeOpen} onOpenChange={(v) => { if (!v && !closing) setCloseOpen(false); }}>
+        <DialogContent className="bg-card border-border max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <XCircle className="w-5 h-5" />
+              Cierre de jornada
+            </DialogTitle>
+            <DialogDescription className="pt-1 text-xs text-muted-foreground">
+              Contá el efectivo y ajustá el monto si hace falta. El cuadre se calcula en vivo.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2">
+            {/* Breakdown */}
+            <div className="bg-background border border-border rounded-md p-3 space-y-1.5 text-xs">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted-foreground font-bold uppercase tracking-wider">Fondo inicial</span>
+                <span className="font-black tabular-nums text-foreground">{formatPriceArs(fondoInicial)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted-foreground font-bold uppercase tracking-wider">+ Cobros efectivo</span>
+                <span className="font-black tabular-nums text-green-500">+ {formatPriceArs(cobrosEfectivo)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted-foreground font-bold uppercase tracking-wider">+ Ingresos manuales</span>
+                <span className="font-black tabular-nums text-green-500">+ {formatPriceArs(ingresosManuales)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted-foreground font-bold uppercase tracking-wider">− Egresos manuales</span>
+                <span className="font-black tabular-nums text-red-500">− {formatPriceArs(egresosManuales)}</span>
+              </div>
+              <div className="border-t border-border pt-1.5 flex items-center justify-between gap-3">
+                <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Efectivo esperado</span>
+                <span className="font-black tabular-nums text-primary text-base">{formatPriceArs(efectivoEsperado)}</span>
+              </div>
+            </div>
+
+            {/* Info extra */}
+            <div className="grid grid-cols-3 gap-2 text-[11px]">
+              <div className="bg-background border border-border rounded-md p-2 text-center">
+                <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-0.5">Transferencias</p>
+                <p className="font-black tabular-nums text-blue-400">{formatPriceArs(cobrosTransferencia)}</p>
+              </div>
+              <div className="bg-background border border-border rounded-md p-2 text-center">
+                <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-0.5">Pedidos</p>
+                <p className="font-black tabular-nums">{totalPedidosJornada}</p>
+              </div>
+              <div className="bg-background border border-border rounded-md p-2 text-center">
+                <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-0.5">Cancelados</p>
+                <p className={`font-black tabular-nums ${pedidosCancelados > 0 ? 'text-red-500' : ''}`}>{pedidosCancelados}</p>
+              </div>
+            </div>
+
+            {/* Input efectivo real */}
+            <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground block">
+                ¿Cuánto efectivo hay en caja?
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-bold text-sm">$</span>
+                <Input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={montoCierre}
+                  onChange={(e) => setMontoCierre(e.target.value)}
+                  placeholder="0"
+                  autoFocus
+                  className="pl-7 bg-background border-border text-foreground h-11 text-base font-black tabular-nums"
+                />
+              </div>
+            </div>
+
+            {/* Cuadre en vivo */}
+            {montoCierre !== '' && !Number.isNaN(Number(montoCierre)) && (
+              <div className={`rounded-md p-3 border text-center ${
+                cuadre === 0
+                  ? 'bg-green-500/15 border-green-500/40'
+                  : cuadre > 0
+                    ? 'bg-green-500/10 border-green-500/30'
+                    : 'bg-red-500/10 border-red-500/40'
+              }`}>
+                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-0.5">Diferencia</p>
+                {cuadre === 0 ? (
+                  <p className="font-black text-sm text-green-500 uppercase tracking-wide">Cuadra perfecto ✓</p>
+                ) : (
+                  <p className={`font-black text-lg tabular-nums ${cuadre > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                    {cuadre > 0 ? '+' : '−'}{formatPriceArs(Math.abs(cuadre))}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setCloseOpen(false)}
+              disabled={closing}
+              className="border-border font-bold uppercase tracking-wide"
+            >
+              Volver
+            </Button>
+            <Button
+              onClick={handleClose}
+              disabled={closing}
+              className="bg-red-600 hover:bg-red-700 text-white font-black uppercase tracking-wide border-0"
+            >
+              {closing ? 'Cerrando...' : 'Cerrar Jornada'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal: registro de ingreso/egreso */}
+      <Dialog open={!!movOpen} onOpenChange={(v) => { if (!v && !movSaving) setMovOpen(null); }}>
+        <DialogContent className="bg-card border-border max-w-sm">
+          <DialogHeader>
+            <DialogTitle className={`flex items-center gap-2 ${movOpen === 'ingreso' ? 'text-green-500' : 'text-red-500'}`}>
+              {movOpen === 'ingreso' ? <TrendingUp className="w-5 h-5" /> : <TrendingDown className="w-5 h-5" />}
+              {movOpen === 'ingreso' ? 'Registrar ingreso' : 'Registrar egreso'}
+            </DialogTitle>
+            <DialogDescription className="pt-1 text-xs text-muted-foreground">
+              {movOpen === 'ingreso'
+                ? 'Dinero que entra a caja fuera de pedidos (ej: deuda cobrada).'
+                : 'Dinero que sale de caja fuera de pedidos (ej: pago repartidor, compras).'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2">
+            <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground block">Monto</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-bold text-sm">$</span>
+                <Input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={movMonto}
+                  onChange={(e) => setMovMonto(e.target.value)}
+                  placeholder="0"
+                  autoFocus
+                  className="pl-7 bg-background border-border text-foreground h-11 text-base font-black tabular-nums"
+                />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground block">Motivo</label>
+              <Input
+                type="text"
+                value={movMotivo}
+                onChange={(e) => setMovMotivo(e.target.value)}
+                placeholder={movOpen === 'ingreso' ? 'Motivo del ingreso' : 'Motivo del egreso'}
+                className="bg-background border-border text-foreground h-10 text-sm"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setMovOpen(null)}
+              disabled={movSaving}
+              className="border-border font-bold uppercase tracking-wide"
+            >
+              Volver
+            </Button>
+            <Button
+              onClick={handleMovSave}
+              disabled={movSaving}
+              className={`font-black uppercase tracking-wide border-0 text-white ${movOpen === 'ingreso' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}
+            >
+              {movSaving ? 'Guardando...' : movOpen === 'ingreso' ? 'Registrar ingreso' : 'Registrar egreso'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+};
+
 // ── Componente principal ──────────────────────────────────────────
 const AdminDashboard = () => {
   const [products, setProducts] = useState([]);
@@ -504,6 +1084,8 @@ const AdminDashboard = () => {
   const [slotOccupancy, setSlotOccupancy] = useState([]);
   const [maxMedallionsPerSlot, setMaxMedallionsPerSlot] = useState(20);
   const [activeTab, setActiveTab] = useState('orders');
+  const [jornadaActiva, setJornadaActiva] = useState(null);
+  const [jornadaLoading, setJornadaLoading] = useState(true);
   const navigate = useNavigate();
 
   const TAB_TITLES = {
@@ -511,6 +1093,10 @@ const AdminDashboard = () => {
     kitchen: 'Cocina',
     products: 'Productos',
     customers: 'Clientes',
+    caja: 'Caja',
+    menu: 'Menú',
+    reportes: 'Reportes',
+    config: 'Configuración',
   };
 
   const isPending = (key) => pendingIds.has(key);
@@ -532,7 +1118,39 @@ const AdminDashboard = () => {
     return true;
   };
 
+  // Gate: bloquea operaciones sobre pedidos si no hay jornada abierta.
+  // Retorna true si se puede operar, false si no (y muestra toast).
+  const requireJornada = () => {
+    if (!jornadaActiva) {
+      toast.error('Primero iniciá la jornada desde la tab Caja');
+      return false;
+    }
+    return true;
+  };
+
   useEffect(() => { loadData(); }, []);
+
+  // Polling de jornada activa cada 30s para reaccionar a apertura/cierre
+  // (posiblemente desde otro dispositivo/admin concurrente).
+  const refetchJornada = async () => {
+    try {
+      const rec = await pb.collection('jornadas').getFirstListItem('estado = "abierta"', { requestKey: null });
+      setJornadaActiva(rec);
+    } catch (err) {
+      if (err?.status === 404) {
+        setJornadaActiva(null);
+      } else {
+        console.error('[AdminDashboard] jornada fetch failed:', err);
+      }
+    } finally {
+      setJornadaLoading(false);
+    }
+  };
+  useEffect(() => {
+    refetchJornada();
+    const id = setInterval(refetchJornada, 30000);
+    return () => clearInterval(id);
+  }, []);
 
   // Polling de ocupación por tanda cada 30s para los chips de cabecera
   useEffect(() => {
@@ -619,6 +1237,7 @@ const AdminDashboard = () => {
   // Bulk: mover pedidos Pendientes a "En preparación" (desde el tab Cocina)
   const handleSendToKitchen = async (orderIds) => {
     if (!requireAuth()) return;
+    if (!requireJornada()) return;
     if (!orderIds || orderIds.length === 0) return;
     orderIds.forEach(id => markPending(id, true));
     try {
@@ -652,6 +1271,7 @@ const AdminDashboard = () => {
   // Cocina: marcar un pedido "En preparación" como "Listo" (terminado)
   const handleMarkReady = async (orderId) => {
     if (!requireAuth()) return;
+    if (!requireJornada()) return;
     markPending(orderId, true);
     try {
       const updated = await pb.collection('orders').update(
@@ -671,6 +1291,7 @@ const AdminDashboard = () => {
 
   const handleUpdateOrderStatus = async (orderId, status) => {
     if (!requireAuth()) return;
+    if (!requireJornada()) return;
     markPending(orderId, true);
     try {
       const updated = await pb.collection('orders').update(orderId, { orderStatus: status }, { requestKey: null });
@@ -691,6 +1312,7 @@ const AdminDashboard = () => {
       return;
     }
     if (!requireAuth()) return;
+    if (!requireJornada()) return;
     markPending(orderId, true);
     try {
       const updated = await pb.collection('orders').update(
@@ -715,6 +1337,7 @@ const AdminDashboard = () => {
 
   const handleSendWhatsApp = async (order) => {
     if (!requireAuth()) return;
+    if (!requireJornada()) return;
     markPending(order.id, true);
 
     // Step 1: update order status in PocketBase (critical — if this fails, nothing else happens)
@@ -768,7 +1391,26 @@ const AdminDashboard = () => {
     markPending(order.id, false);
   };
 
+  // Inicio del día local en AR (las 00:00 locales del navegador del admin).
+  // Se usa para filtrar "pedidos de hoy" cuando no hay jornada abierta, y para
+  // detectar huérfanos al abrir la primera jornada de la jornada nocturna.
+  const todayStartMs = (() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+  })();
+
   const filteredOrders = orders.filter(order => {
+    // Scope por jornada: con jornada abierta → solo pedidos de esa jornada
+    // (el hook ya les asigna jornadaId). Sin jornada → pedidos huérfanos del
+    // día (los que entraron esperando que el admin abra caja).
+    if (jornadaActiva) {
+      if (order.jornadaId !== jornadaActiva.id) return false;
+    } else {
+      if (order.jornadaId) return false; // pedido de otra jornada (cerrada), no se muestra
+      const createdMs = order.created ? new Date(order.created).getTime() : 0;
+      if (createdMs < todayStartMs) return false;
+    }
     if (filters.timeSlot !== 'all' && order.deliveryTimeSlot !== filters.timeSlot) return false;
     if (filters.status !== 'all' && order.orderStatus !== filters.status) return false;
     return true;
@@ -824,27 +1466,52 @@ const AdminDashboard = () => {
                 </TabsTrigger>
                 <TabsTrigger value="products" className="font-bold uppercase tracking-wide py-1 px-2.5 text-[11px] data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:text-sm data-[state=active]:font-black data-[state=active]:px-3.5 data-[state=active]:py-1.5">Productos</TabsTrigger>
                 <TabsTrigger value="customers" className="font-bold uppercase tracking-wide py-1 px-2.5 text-[11px] data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:text-sm data-[state=active]:font-black data-[state=active]:px-3.5 data-[state=active]:py-1.5">Clientes</TabsTrigger>
-                <Link
-                  to="/menu"
-                  className="font-bold uppercase tracking-wide py-1 px-2.5 text-[11px] inline-flex items-center justify-center rounded-sm text-foreground/70 hover:text-foreground hover:bg-muted/20 transition-colors border-l border-border/50 ml-0.5"
-                  title="Ir al menú de clientes"
-                >
-                  Menú
-                </Link>
+                <TabsTrigger value="caja" className="font-bold uppercase tracking-wide py-1 px-2.5 text-[11px] data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:text-sm data-[state=active]:font-black data-[state=active]:px-3.5 data-[state=active]:py-1.5">
+                  <Wallet className="mr-1 h-3 w-3" />Caja
+                </TabsTrigger>
+                <TabsTrigger value="menu" className="font-bold uppercase tracking-wide py-1 px-2.5 text-[11px] data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:text-sm data-[state=active]:font-black data-[state=active]:px-3.5 data-[state=active]:py-1.5">
+                  <Utensils className="mr-1 h-3 w-3" />Menú
+                </TabsTrigger>
+                <TabsTrigger value="reportes" className="font-bold uppercase tracking-wide py-1 px-2.5 text-[11px] data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:text-sm data-[state=active]:font-black data-[state=active]:px-3.5 data-[state=active]:py-1.5">
+                  <BarChart3 className="mr-1 h-3 w-3" />Reportes
+                </TabsTrigger>
+                <TabsTrigger value="config" className="font-bold uppercase tracking-wide py-1 px-2.5 text-[11px] data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:text-sm data-[state=active]:font-black data-[state=active]:px-3.5 data-[state=active]:py-1.5">
+                  <Settings className="mr-1 h-3 w-3" />Config
+                </TabsTrigger>
               </TabsList>
 
               <div className="flex-1 flex justify-end gap-1.5">
-                <Button asChild variant="outline" size="sm" className="border-border h-8 px-2 text-[11px]">
-                  <Link to="/gestion/reportes"><BarChart3 className="mr-1 h-3 w-3" />Reportes</Link>
-                </Button>
-                <Button asChild variant="outline" size="sm" className="border-border h-8 px-2 text-[11px]">
-                  <Link to="/gestion/config"><Settings className="mr-1 h-3 w-3" />Config</Link>
-                </Button>
+                {activeTab === 'orders' && (
+                  <Button asChild size="sm" className="bg-red-600 hover:bg-red-700 text-white font-black uppercase tracking-wide h-8 px-2 text-[11px] border-0">
+                    <Link to="/gestion/editar-pedidos"><XCircle className="mr-1 h-3 w-3" />Editar Pedidos</Link>
+                  </Button>
+                )}
               </div>
             </div>
 
             {/* ── TAB: PEDIDOS ── */}
             <TabsContent value="orders" className="space-y-2">
+              {/* Banner sin jornada: bloquea operar pedidos */}
+              {!jornadaLoading && !jornadaActiva && (
+                <div className="sticky top-0 z-10 bg-primary/20 border border-primary/40 rounded-lg px-3 py-2 flex items-start gap-2 shadow-sm backdrop-blur">
+                  <Wallet className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-black uppercase tracking-wide text-primary">
+                      No hay jornada abierta
+                    </p>
+                    <p className="text-[11px] text-muted-foreground font-medium">
+                      Los pedidos no se pueden procesar. Iniciá la jornada desde la tab{' '}
+                      <button
+                        onClick={() => setActiveTab('caja')}
+                        className="underline font-black uppercase text-primary hover:text-primary/80"
+                      >
+                        Caja
+                      </button>.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Filtros inline: horarios/ocupación + estado */}
               <div className="space-y-2">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -860,7 +1527,10 @@ const AdminDashboard = () => {
                     Todos
                   </button>
                   {timeSlots.map(slot => {
-                    const info = slotOccupancy.find((s) => s.slot === slot);
+                    // La info de ocupación solo se considera si hay jornada abierta.
+                    // Sin jornada, los botones de slot mantienen la funcionalidad de
+                    // filtro pero no muestran colores ni contadores de medallones.
+                    const info = jornadaActiva ? slotOccupancy.find((s) => s.slot === slot) : null;
                     const active = filters.timeSlot === slot;
                     // Color de ocupación (verde/amarillo/rojo) solo cuando no está activo;
                     // el botón activo mantiene el naranja primary del patrón general.
@@ -932,23 +1602,25 @@ const AdminDashboard = () => {
                     const cashPending = order.paymentMethod === 'Efectivo' && !isPaid;
                     const borderCls = STATUS_BORDER_COLOR[order.orderStatus] || STATUS_BORDER_COLOR[ORDER_STATUS.PENDING];
                     const isProcessing = isPending(order.id);
+                    const isCancelled = order.orderStatus === ORDER_STATUS.CANCELLED;
+                    const blockedNoJornada = !jornadaActiva && !isCancelled;
                     const items = order.items || [];
 
                     return (
                       <div
                         key={order.id}
-                        className={`bg-card border border-border border-l-[4px] ${borderCls} rounded-lg overflow-hidden shadow-sm flex flex-col text-xs p-2 gap-1.5`}
+                        className={`bg-card border border-border border-l-[4px] ${borderCls} rounded-lg overflow-hidden shadow-sm flex flex-col text-xs p-2 gap-1.5 ${isCancelled ? 'opacity-60' : ''} ${blockedNoJornada ? 'opacity-50' : ''}`}
                       >
                         {/* Row 1: hora + nombre cliente + total */}
                         <div className="flex items-center gap-2">
-                          <div className="inline-flex items-center gap-1 bg-yellow-500 text-black px-1.5 py-0.5 rounded shrink-0">
+                          <div className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded shrink-0 ${isCancelled ? 'bg-gray-500 text-white' : 'bg-yellow-500 text-black'}`}>
                             <Clock className="w-3 h-3" />
                             <span className="text-xs font-black tracking-tight leading-none">{order.deliveryTimeSlot || '—'}</span>
                           </div>
-                          <p className="text-sm font-black uppercase tracking-tight leading-tight break-words min-w-0 flex-1">
+                          <p className={`text-sm font-black uppercase tracking-tight leading-tight break-words min-w-0 flex-1 ${isCancelled ? 'line-through' : ''}`}>
                             {order.customerName || 'Sin nombre'}
                           </p>
-                          <p className="text-sm font-black text-primary leading-none tabular-nums shrink-0">
+                          <p className={`text-sm font-black leading-none tabular-nums shrink-0 ${isCancelled ? 'text-muted-foreground line-through' : 'text-primary'}`}>
                             {formatPrice(order.totalAmount)}
                           </p>
                         </div>
@@ -969,7 +1641,7 @@ const AdminDashboard = () => {
                         </div>
 
                         {/* Row 3: items (contenido del pedido) */}
-                        <div className="space-y-0.5 flex-1">
+                        <div className={`space-y-0.5 flex-1 ${isCancelled ? 'line-through' : ''}`}>
                           {items.map((item, idx) => (
                             <div key={idx} className="flex items-baseline gap-1 text-[11px] leading-tight">
                               <span className="text-xs font-black text-primary tabular-nums w-5 shrink-0">{item.quantity}×</span>
@@ -981,7 +1653,15 @@ const AdminDashboard = () => {
                           ))}
                         </div>
 
-                        {/* Row 4: acciones (cobrar + enviar/finalizar) — debajo del contenido */}
+                        {/* Row 4: estado CANCELADO (sin acciones) o acciones normales */}
+                        {isCancelled ? (
+                          <div className="flex items-stretch pt-1 border-t border-border">
+                            <div className="flex-1 h-10 flex items-center justify-center rounded-md bg-red-500/15 border border-red-500/40">
+                              <XCircle className="w-4 h-4 text-red-500 mr-1.5" />
+                              <span className="text-[11px] text-red-500 font-black uppercase tracking-wider">Cancelado</span>
+                            </div>
+                          </div>
+                        ) : (
                         <div className="flex items-stretch gap-1 pt-1 border-t border-border">
                           {/* COBRADO / COBRAR: acción de pago — misma consistencia filled que En Camino */}
                           <Button
@@ -1040,6 +1720,7 @@ const AdminDashboard = () => {
                             </div>
                           )}
                         </div>
+                        )}
                       </div>
                     );
                   })}
@@ -1054,10 +1735,32 @@ const AdminDashboard = () => {
                 <h2 className="text-2xl font-black uppercase tracking-wide">Vista Cocina</h2>
               </div>
               <p className="text-muted-foreground text-sm mb-4">Productos a preparar por turno. Solo pedidos activos (no finalizados).</p>
-              {loading
-                ? <div className="space-y-4">{[1, 2, 3].map(i => <Skeleton key={i} className="h-32 w-full rounded-xl" />)}</div>
-                : <KitchenView orders={orders} onSendToKitchen={handleSendToKitchen} onMarkReady={handleMarkReady} isPending={isPending} />
-              }
+              {loading || jornadaLoading ? (
+                <div className="space-y-4">{[1, 2, 3].map(i => <Skeleton key={i} className="h-32 w-full rounded-xl" />)}</div>
+              ) : !jornadaActiva ? (
+                <Card className="bg-card border border-border border-l-[6px] border-l-primary/60">
+                  <CardContent className="py-12 text-center">
+                    <Wallet className="w-10 h-10 text-primary/70 mx-auto mb-3" />
+                    <p className="text-base font-black uppercase tracking-wide mb-1">Iniciá la jornada</p>
+                    <p className="text-xs text-muted-foreground font-medium max-w-sm mx-auto">
+                      Para ver los pedidos de cocina, abrí la jornada desde la tab{' '}
+                      <button
+                        onClick={() => setActiveTab('caja')}
+                        className="underline font-black uppercase text-primary hover:text-primary/80"
+                      >
+                        Caja
+                      </button>.
+                    </p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <KitchenView
+                  orders={orders.filter(o => o.jornadaId === jornadaActiva.id)}
+                  onSendToKitchen={handleSendToKitchen}
+                  onMarkReady={handleMarkReady}
+                  isPending={isPending}
+                />
+              )}
             </TabsContent>
 
             {/* ── TAB: PRODUCTOS ── */}
@@ -1248,6 +1951,46 @@ const AdminDashboard = () => {
                 customer={selectedCustomer}
                 onSuccess={() => { setSelectedCustomer(null); loadData(); }}
               />
+            </TabsContent>
+
+            {/* ── TAB: CAJA ── */}
+            <TabsContent value="caja" className="space-y-3">
+              <div className="flex items-center gap-3 mb-1">
+                <Wallet className="w-6 h-6 text-primary" />
+                <h2 className="text-2xl font-black uppercase tracking-wide">Caja</h2>
+              </div>
+              <p className="text-muted-foreground text-sm mb-4">
+                Apertura y cierre de jornada. Los pedidos creados mientras hay una jornada abierta quedan asociados automáticamente.
+              </p>
+              <CajaCard
+                currentUserId={pb.authStore.model?.id}
+                jornada={jornadaActiva}
+                jornadaLoading={jornadaLoading}
+                onJornadaChange={() => { refetchJornada(); loadData(); }}
+              />
+            </TabsContent>
+
+            {/* ── TAB: MENÚ (vista cliente embebida) ── */}
+            <TabsContent value="menu" className="space-y-3">
+              <MenuPreviewContent />
+            </TabsContent>
+
+            {/* ── TAB: REPORTES ── */}
+            <TabsContent value="reportes" className="space-y-3">
+              <div className="flex items-center gap-3 mb-1">
+                <BarChart3 className="w-6 h-6 text-primary" />
+                <h2 className="text-2xl font-black uppercase tracking-wide">Reportes</h2>
+              </div>
+              <ReportsContent />
+            </TabsContent>
+
+            {/* ── TAB: CONFIGURACIÓN ── */}
+            <TabsContent value="config" className="space-y-3">
+              <div className="flex items-center gap-3 mb-1">
+                <Settings className="w-6 h-6 text-primary" />
+                <h2 className="text-2xl font-black uppercase tracking-wide">Configuración</h2>
+              </div>
+              <SettingsContent />
             </TabsContent>
           </Tabs>
         </div>

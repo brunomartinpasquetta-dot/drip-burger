@@ -4,6 +4,7 @@ export const ORDER_STATUS = {
   READY: 'Listo',
   IN_TRANSIT: 'En camino',
   COMPLETED: 'Finalizado',
+  CANCELLED: 'Cancelado',
 };
 
 export const ORDER_STATUS_VALUES = Object.values(ORDER_STATUS);

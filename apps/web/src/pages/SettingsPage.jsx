@@ -770,6 +770,24 @@ const MercadoPagoCard = () => {
 // ══════════════════════════════════════════════════════════════════
 //  Page wrapper
 // ══════════════════════════════════════════════════════════════════
+// Body de la pantalla de Configuración, sin Header ni container.
+// Se usa embebido como tab dentro del AdminDashboard y también por el
+// wrapper SettingsPage (página standalone para deep-links legacy).
+export const SettingsContent = () => {
+  return (
+    <div className="space-y-4">
+      <OperacionCard />
+      <div className="pt-2">
+        <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-2 px-1">Integraciones</p>
+        <div className="space-y-4">
+          <WhatsAppCard />
+          <MercadoPagoCard />
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const SettingsPage = () => {
   return (
     <>
@@ -790,17 +808,7 @@ const SettingsPage = () => {
             <div className="w-16" />
           </div>
 
-          {/* Operación primero (lo que cambia más seguido), integraciones abajo */}
-          <div className="space-y-4">
-            <OperacionCard />
-            <div className="pt-2">
-              <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-2 px-1">Integraciones</p>
-              <div className="space-y-4">
-                <WhatsAppCard />
-                <MercadoPagoCard />
-              </div>
-            </div>
-          </div>
+          <SettingsContent />
         </div>
       </div>
     </>

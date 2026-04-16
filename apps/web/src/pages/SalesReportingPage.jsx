@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet';
+import { Link } from 'react-router-dom';
 import pb from '@/lib/pocketbaseClient';
 import Header from '@/components/Header.jsx';
 import { Button } from '@/components/ui/button';
@@ -10,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Skeleton } from '@/components/ui/skeleton';
-import { DollarSign, ShoppingBag, Banknote, CreditCard, Truck, Calendar } from 'lucide-react';
+import { DollarSign, ShoppingBag, Banknote, CreditCard, Truck, Calendar, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays, subMonths, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -61,7 +62,10 @@ const PRESETS = [
   },
 ];
 
-const SalesReportingPage = () => {
+// Body de la pantalla de Reportes, sin Header ni container.
+// Se usa embebido como tab dentro del AdminDashboard y también por el
+// wrapper SalesReportingPage (página standalone para deep-links legacy).
+export const ReportsContent = () => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [activePreset, setActivePreset] = useState('today');
@@ -225,24 +229,8 @@ const SalesReportingPage = () => {
   };
 
   return (
-    <>
-      <Helmet><title>Reportes - DRIP BURGER</title></Helmet>
-
-      <div className="min-h-screen bg-background">
-        <Header />
-
-        <div className="container mx-auto px-3 sm:px-4 lg:px-6 py-4">
-          {/* Header de página */}
-          <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-            <h1 className="text-xl sm:text-2xl font-black uppercase tracking-tighter">
-              Reportes <span className="text-primary">DRIP</span>
-            </h1>
-            <Button asChild variant="outline" size="sm" className="border-border h-8 px-2 text-[11px]">
-              <a href="/gestion">← Volver al panel</a>
-            </Button>
-          </div>
-
-          {/* Presets de rango + custom */}
+    <div className="space-y-4">
+      {/* Presets de rango + custom */}
           <Card className="bg-card border-border shadow-sm mb-4">
             <CardContent className="p-3 space-y-3">
               <div className="flex items-center gap-1.5 flex-wrap">
@@ -527,6 +515,32 @@ const SalesReportingPage = () => {
               </div>
             </>
           )}
+    </div>
+  );
+};
+
+// Wrapper standalone para la ruta /gestion/reportes (deep-links viejos).
+// Internamente renderiza ReportsContent dentro del layout público con Header.
+const SalesReportingPage = () => {
+  return (
+    <>
+      <Helmet><title>Reportes - DRIP BURGER</title></Helmet>
+
+      <div className="min-h-screen bg-background">
+        <Header />
+
+        <div className="container mx-auto px-3 sm:px-4 lg:px-6 py-4">
+          <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+            <Button asChild variant="outline" size="sm" className="border-border h-8 px-2 text-[11px]">
+              <Link to="/gestion"><ArrowLeft className="mr-1 h-3 w-3" />Volver</Link>
+            </Button>
+            <h1 className="text-xl sm:text-2xl font-black uppercase tracking-tighter">
+              Reportes <span className="text-primary">DRIP</span>
+            </h1>
+            <div className="w-16" />
+          </div>
+
+          <ReportsContent />
         </div>
       </div>
     </>
