@@ -14,11 +14,12 @@ const parseTimeToMinutes = (hhmm) => {
 
 // Determina si el local está abierto ahora mismo.
 // Soporta cruce de medianoche (ej. abre 20:00, cierra 02:00).
-// Si no hay horarios configurados → considera abierto (default tolerante).
+// Si la configuración está incompleta, tratamos como CERRADO por seguridad
+// para evitar aceptar pedidos cuando el admin olvidó setear horarios.
 export const computeIsOpen = (horaApertura, horaCierre, now = new Date()) => {
   const openMin = parseTimeToMinutes(horaApertura);
   const closeMin = parseTimeToMinutes(horaCierre);
-  if (openMin === null || closeMin === null) return true;
+  if (openMin === null || closeMin === null) return false;
 
   const nowMin = now.getHours() * 60 + now.getMinutes();
 

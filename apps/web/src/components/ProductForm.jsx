@@ -18,6 +18,8 @@ const ProductForm = ({ product, open, onOpenChange, onSuccess }) => {
     simplePrice: '',
     doublePrice: '',
     triplePrice: '',
+    quadruplePrice: 0,
+    quintuplePrice: 0,
     fixedPrice: '',
     available: true,
     internalNote: ''
@@ -34,6 +36,8 @@ const ProductForm = ({ product, open, onOpenChange, onSuccess }) => {
         simplePrice: product.simplePrice || '',
         doublePrice: product.doublePrice || '',
         triplePrice: product.triplePrice || '',
+        quadruplePrice: product.quadruplePrice || 0,
+        quintuplePrice: product.quintuplePrice || 0,
         fixedPrice: product.fixedPrice || '',
         available: product.available ?? true,
         internalNote: product.internalNote || ''
@@ -51,6 +55,8 @@ const ProductForm = ({ product, open, onOpenChange, onSuccess }) => {
         simplePrice: '',
         doublePrice: '',
         triplePrice: '',
+        quadruplePrice: 0,
+        quintuplePrice: 0,
         fixedPrice: '',
         available: true,
         internalNote: ''
@@ -89,12 +95,16 @@ const ProductForm = ({ product, open, onOpenChange, onSuccess }) => {
         data.append('simplePrice', formData.simplePrice || 0);
         data.append('doublePrice', formData.doublePrice || 0);
         data.append('triplePrice', formData.triplePrice || 0);
+        data.append('quadruplePrice', Number(formData.quadruplePrice) || 0);
+        data.append('quintuplePrice', Number(formData.quintuplePrice) || 0);
         data.append('fixedPrice', 0);
       } else {
         data.append('fixedPrice', formData.fixedPrice || 0);
         data.append('simplePrice', 0);
         data.append('doublePrice', 0);
         data.append('triplePrice', 0);
+        data.append('quadruplePrice', 0);
+        data.append('quintuplePrice', 0);
       }
 
       // Add dummy price field to satisfy schema if needed, though we use specific ones
@@ -186,7 +196,7 @@ const ProductForm = ({ product, open, onOpenChange, onSuccess }) => {
 
             <div className="p-4 bg-background rounded-lg border border-border space-y-4">
               {formData.hasMedallions ? (
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                   <div>
                     <Label htmlFor="simplePrice" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Precio Simple</Label>
                     <Input
@@ -219,6 +229,30 @@ const ProductForm = ({ product, open, onOpenChange, onSuccess }) => {
                       step="0.01"
                       value={formData.triplePrice}
                       onChange={(e) => setFormData({ ...formData, triplePrice: e.target.value })}
+                      className="bg-card border-border text-foreground mt-1"
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="quadruplePrice" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Precio Cuádruple</Label>
+                    <Input
+                      id="quadruplePrice"
+                      type="number"
+                      step="0.01"
+                      value={formData.quadruplePrice}
+                      onChange={(e) => setFormData({ ...formData, quadruplePrice: e.target.value })}
+                      className="bg-card border-border text-foreground mt-1"
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="quintuplePrice" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Precio Quíntuple</Label>
+                    <Input
+                      id="quintuplePrice"
+                      type="number"
+                      step="0.01"
+                      value={formData.quintuplePrice}
+                      onChange={(e) => setFormData({ ...formData, quintuplePrice: e.target.value })}
                       className="bg-card border-border text-foreground mt-1"
                       placeholder="0.00"
                     />

@@ -42,6 +42,7 @@ export const CartProvider = ({ children }) => {
         productName: product.name,
         productImage: product.image,
         price: product.price,
+        hasMedallions: product.hasMedallions !== false,
         pattyCount,
         quantity
       }];

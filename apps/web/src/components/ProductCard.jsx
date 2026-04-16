@@ -25,14 +25,22 @@ const ProductCard = ({ product }) => {
   const simplePrice = safeProduct.simplePrice || 0;
   const doublePrice = safeProduct.doublePrice || 0;
   const triplePrice = safeProduct.triplePrice || 0;
+  const quadruplePrice = safeProduct.quadruplePrice || 0;
+  const quintuplePrice = safeProduct.quintuplePrice || 0;
   const fixedPrice = safeProduct.fixedPrice || 0;
+
+  const maxPatty = quintuplePrice > 0 ? 5 : quadruplePrice > 0 ? 4 : 3;
 
   const imageUrl = safeProduct.image && !imgError
     ? pb.files.getUrl(safeProduct, safeProduct.image)
     : null;
 
   const currentPrice = hasMedallions
-    ? (pattyCount === 1 ? simplePrice : pattyCount === 2 ? doublePrice : triplePrice)
+    ? (pattyCount === 1 ? simplePrice
+       : pattyCount === 2 ? doublePrice
+       : pattyCount === 3 ? triplePrice
+       : pattyCount === 4 ? quadruplePrice
+       : quintuplePrice)
     : fixedPrice;
 
   const handleAddToCart = () => {
@@ -79,10 +87,16 @@ const ProductCard = ({ product }) => {
           {hasMedallions ? (
             <div className="space-y-1">
               <p className="text-xs font-bold uppercase text-muted-foreground">Precios</p>
-              <div className="flex justify-between text-sm">
+              <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm">
                 <span className={pattyCount === 1 ? "text-primary font-bold" : "text-muted-foreground"}>Simple: {formatPrice(simplePrice)}</span>
                 <span className={pattyCount === 2 ? "text-primary font-bold" : "text-muted-foreground"}>Doble: {formatPrice(doublePrice)}</span>
                 <span className={pattyCount === 3 ? "text-primary font-bold" : "text-muted-foreground"}>Triple: {formatPrice(triplePrice)}</span>
+                {quadruplePrice > 0 && (
+                  <span className={pattyCount === 4 ? "text-primary font-bold" : "text-muted-foreground"}>Cuádruple: {formatPrice(quadruplePrice)}</span>
+                )}
+                {quintuplePrice > 0 && (
+                  <span className={pattyCount === 5 ? "text-primary font-bold" : "text-muted-foreground"}>Quíntuple: {formatPrice(quintuplePrice)}</span>
+                )}
               </div>
             </div>
           ) : (
@@ -112,8 +126,8 @@ const ProductCard = ({ product }) => {
                   variant="outline"
                   size="icon"
                   className="h-8 w-8 border-border hover:bg-primary hover:text-primary-foreground hover:border-primary"
-                  onClick={() => setPattyCount(Math.min(3, pattyCount + 1))}
-                  disabled={pattyCount >= 3}
+                  onClick={() => setPattyCount(Math.min(maxPatty, pattyCount + 1))}
+                  disabled={pattyCount >= maxPatty}
                 >
                   <Plus className="h-4 w-4" />
                 </Button>

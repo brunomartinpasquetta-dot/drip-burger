@@ -7,6 +7,7 @@ import { useCart } from '@/contexts/CartContext.jsx';
 import { useShippingPrice } from '@/hooks/useShippingPrice.js';
 import { useStoreHours } from '@/hooks/useStoreHours';
 import pb from '@/lib/pocketbaseClient';
+import apiServerClient from '@/lib/apiServerClient';
 import { cn } from '@/lib/utils.js';
 import Header from '@/components/Header.jsx';
 import { Button } from '@/components/ui/button';
@@ -41,7 +42,19 @@ const CartPage = () => {
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Disponibilidad de tandas: [{slot, usedMedallions, available, full}]
+  const [slotAvailability, setSlotAvailability] = useState([]);
+  const [availabilityLoading, setAvailabilityLoading] = useState(true);
+
   const timeSlots = ['20:30', '21:00', '21:30', '22:00', '22:30', '23:00'];
+
+  // Suma medallones del carrito actual. Productos sin medallones no cuentan.
+  const cartMedallions = cartItems.reduce((sum, item) => {
+    if (item.hasMedallions === false) return sum;
+    const patty = Number(item.pattyCount) || 0;
+    const qty = Number(item.quantity) || 0;
+    return sum + patty * qty;
+  }, 0);
 
   useEffect(() => {
     if (isAuthenticated && currentUser) {
@@ -55,6 +68,50 @@ const CartPage = () => {
       }));
     }
   }, [isAuthenticated, currentUser]);
+
+  // Fetch slot availability al mount + poll cada 30s
+  useEffect(() => {
+    let mounted = true;
+    let intervalId = null;
+
+    const loadAvailability = async () => {
+      try {
+        const res = await apiServerClient.fetch('/slots/availability');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (!mounted) return;
+        setSlotAvailability(data.slots || []);
+      } catch (err) {
+        console.error('[CartPage] slot availability failed:', err);
+      } finally {
+        if (mounted) setAvailabilityLoading(false);
+      }
+    };
+
+    loadAvailability();
+    intervalId = setInterval(loadAvailability, 30000);
+
+    return () => {
+      mounted = false;
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, []);
+
+  // Lookup helper: info de disponibilidad para un slot dado
+  const getSlotInfo = (slot) => slotAvailability.find((s) => s.slot === slot);
+
+  // Auto-deseleccionar si el slot pasó a inválido (full o sin medallones suficientes)
+  useEffect(() => {
+    if (!formData.horario_reparto || availabilityLoading) return;
+    const info = getSlotInfo(formData.horario_reparto);
+    if (!info) return;
+    const invalid = info.full || (cartMedallions > 0 && info.available < cartMedallions);
+    if (invalid) {
+      toast.error('Ese horario ya no tiene lugar suficiente, elegí otro');
+      setFormData(prev => ({ ...prev, horario_reparto: '' }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slotAvailability, cartMedallions]);
 
   const validateForm = () => {
     const newErrors = {};
@@ -83,6 +140,16 @@ const CartPage = () => {
     if (!validateForm()) {
       toast.error('Completá todos los campos requeridos marcados en rojo');
       return;
+    }
+
+    // Pre-flight: validar que el slot tenga medallones suficientes
+    const slotInfo = getSlotInfo(formData.horario_reparto);
+    if (slotInfo) {
+      if (slotInfo.full || (cartMedallions > 0 && slotInfo.available < cartMedallions)) {
+        toast.error('Ese horario ya no tiene lugar suficiente, elegí otro');
+        setFormData(prev => ({ ...prev, horario_reparto: '' }));
+        return;
+      }
     }
 
     if (shippingLoading) {
@@ -115,6 +182,7 @@ const CartPage = () => {
         items: cartItems.map(item => ({
           productId: item.productId,
           productName: item.productName,
+          hasMedallions: item.hasMedallions !== false,
           pattyCount: item.pattyCount,
           quantity: item.quantity,
           price: item.price
@@ -208,10 +276,18 @@ const CartPage = () => {
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <h3 className="font-black uppercase text-sm truncate">{item.productName}</h3>
-                          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">
-                            {item.pattyCount}p - {formatPrice(item.price)}
-                          </p>
+                          <div className="flex items-baseline justify-between gap-2 mb-2">
+                            <h3 className="font-black uppercase text-sm truncate">
+                              {item.quantity > 1 && <span className="text-primary tabular-nums">{item.quantity}× </span>}
+                              {item.productName}
+                              {item.hasMedallions !== false && (
+                                <span className="text-muted-foreground font-bold"> · {item.pattyCount} {item.pattyCount === 1 ? 'medallón' : 'medallones'}</span>
+                              )}
+                            </h3>
+                            <span className="text-sm font-black text-primary tabular-nums shrink-0">
+                              {formatPrice(item.price)}
+                            </span>
+                          </div>
                           <div className="flex items-center justify-between">
                             <div className="flex items-center space-x-1 bg-background rounded border border-border p-0.5">
                               <Button
@@ -325,13 +401,57 @@ const CartPage = () => {
                       <SelectValue placeholder="Seleccioná un horario" />
                     </SelectTrigger>
                     <SelectContent className="bg-card border-border">
-                      {timeSlots.map((slot) => (
-                        <SelectItem key={slot} value={slot} className="font-bold focus:bg-primary/20 focus:text-primary">
-                          {slot}
-                        </SelectItem>
-                      ))}
+                      {timeSlots.map((slot) => {
+                        const info = getSlotInfo(slot);
+                        const full = info?.full === true;
+                        const available = info?.available ?? null;
+                        // Insuficiente: hay lugar pero no alcanza para el pedido actual
+                        const insufficient =
+                          !full &&
+                          available !== null &&
+                          cartMedallions > 0 &&
+                          available < cartMedallions;
+                        const almostFull =
+                          !full &&
+                          !insufficient &&
+                          available !== null &&
+                          available > 0 &&
+                          available <= 3;
+                        const disabled = full || insufficient;
+                        return (
+                          <SelectItem
+                            key={slot}
+                            value={slot}
+                            disabled={disabled}
+                            className={cn(
+                              "font-bold focus:bg-primary/20 focus:text-primary",
+                              full && "line-through text-red-500 opacity-50 cursor-not-allowed",
+                              insufficient && "text-red-500 opacity-60 cursor-not-allowed",
+                              almostFull && "text-yellow-500"
+                            )}
+                          >
+                            {slot}
+                            {full && (
+                              <span className="ml-2 text-[10px] font-black uppercase">· Sin lugar</span>
+                            )}
+                            {insufficient && (
+                              <span className="ml-2 text-[10px] font-black uppercase">
+                                · Solo quedan {available} medallones
+                              </span>
+                            )}
+                            {almostFull && (
+                              <span className="ml-2 text-[10px] font-black uppercase">
+                                · Últimos {available} medallones
+                              </span>
+                            )}
+                          </SelectItem>
+                        );
+                      })}
                     </SelectContent>
                   </Select>
+                  {availabilityLoading && (
+                    <p className="text-[10px] text-muted-foreground font-medium">Verificando disponibilidad...</p>
+                  )}
                 </div>
 
                 <div className="space-y-2 pt-2 border-t border-border/50">

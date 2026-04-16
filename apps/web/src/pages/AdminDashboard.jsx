@@ -3,7 +3,7 @@ import { Helmet } from 'react-helmet';
 import { Link, useNavigate } from 'react-router-dom';
 import pb from '@/lib/pocketbaseClient';
 import apiServerClient from '@/lib/apiServerClient';
-import { ORDER_STATUS, PAYMENT_STATUS } from '@/lib/orderConstants';
+import { ORDER_STATUS, PAYMENT_STATUS, MEDALLION_LABELS } from '@/lib/orderConstants';
 import Header from '@/components/Header.jsx';
 import ProductForm from '@/components/ProductForm.jsx';
 import ImageUploadButton from '@/components/ImageUploadButton.jsx';
@@ -33,7 +33,6 @@ const STATUS_BORDER_COLOR = {
 
 // ── Vista COCINA: selección de pedidos + agregación de productos ─
 const BURGER_NAMES = ['BACON DRIP', 'OG DRIP', 'DIRTY DRIP'];
-const MEDALLION_LABELS = { 1: 'Simple', 2: 'Doble', 3: 'Triple' };
 
 // Agrega items de una lista de orders en un productMap + papas total
 const aggregateItems = (orderList) => {
@@ -255,23 +254,23 @@ const KitchenView = ({ orders, onSendToKitchen, onMarkReady, isPending }) => {
                 >
                   <div className="flex items-center gap-2">
                     <div
-                      className={`shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center ${
+                      className={`shrink-0 w-6 h-6 rounded border-2 flex items-center justify-center ${
                         selected ? 'bg-primary border-primary' : 'border-border'
                       }`}
                     >
-                      {selected && <CheckCircle2 className="w-3.5 h-3.5 text-black" />}
+                      {selected && <CheckCircle2 className="w-4 h-4 text-black" />}
                     </div>
                     <TimeSlotPill slot={order.deliveryTimeSlot} />
-                    <p className="text-sm font-black uppercase tracking-tight leading-tight break-words min-w-0 flex-1">
+                    <p className="text-base font-black uppercase tracking-tight leading-tight break-words min-w-0 flex-1">
                       {order.customerName || 'Sin nombre'}
                     </p>
                     <UrgencyBadge urgency={urgency} />
                   </div>
 
-                  <div className="space-y-0.5 pl-7">
+                  <div className="space-y-0.5 pl-8">
                     {items.map((item, idx) => (
-                      <div key={idx} className="flex items-baseline gap-1 text-[11px] leading-tight">
-                        <span className="text-xs font-black text-primary tabular-nums w-5 shrink-0">{item.quantity}×</span>
+                      <div key={idx} className="flex items-baseline gap-1.5 text-sm leading-tight">
+                        <span className="text-base font-black text-primary tabular-nums w-6 shrink-0">{item.quantity}×</span>
                         <span className="font-bold uppercase tracking-tight break-words">
                           {item.productName}
                           {item.pattyCount > 1 && <span className="text-muted-foreground font-medium"> · {MEDALLION_LABELS[item.pattyCount] || `${item.pattyCount}p`}</span>}
@@ -279,8 +278,8 @@ const KitchenView = ({ orders, onSendToKitchen, onMarkReady, isPending }) => {
                       </div>
                     ))}
                     {papasCount > 0 && (
-                      <div className="flex items-baseline gap-1 text-[11px] leading-tight">
-                        <span className="text-xs font-black text-yellow-400 tabular-nums w-5 shrink-0">{papasCount}×</span>
+                      <div className="flex items-baseline gap-1.5 text-sm leading-tight">
+                        <span className="text-base font-black text-yellow-400 tabular-nums w-6 shrink-0">{papasCount}×</span>
                         <span className="font-bold uppercase tracking-tight text-yellow-400">🍟 Papas</span>
                       </div>
                     )}
@@ -325,7 +324,7 @@ const KitchenView = ({ orders, onSendToKitchen, onMarkReady, isPending }) => {
                     </div>
                     <div className="p-2 space-y-1">
                       {isBurger
-                        ? [1, 2, 3].map(p => data.byPatty[p] ? (
+                        ? [1, 2, 3, 4, 5].map(p => data.byPatty[p] ? (
                             <div key={p} className="flex justify-between items-baseline">
                               <span className="text-xs font-bold text-foreground uppercase tracking-wide">{MEDALLION_LABELS[p]}</span>
                               <span className="text-2xl font-black text-white tabular-nums">× {data.byPatty[p]}</span>
@@ -372,15 +371,15 @@ const KitchenView = ({ orders, onSendToKitchen, onMarkReady, isPending }) => {
                 >
                   <div className="flex items-center gap-2">
                     <TimeSlotPill slot={order.deliveryTimeSlot} />
-                    <p className="text-sm font-black uppercase tracking-tight leading-tight break-words min-w-0 flex-1">
+                    <p className="text-base font-black uppercase tracking-tight leading-tight break-words min-w-0 flex-1">
                       {order.customerName || 'Sin nombre'}
                     </p>
                     <UrgencyBadge urgency={urgency} />
                   </div>
                   <div className="space-y-0.5">
                     {items.map((item, idx) => (
-                      <div key={idx} className="flex items-baseline gap-1 text-[11px] leading-tight">
-                        <span className="text-xs font-black text-primary tabular-nums w-5 shrink-0">{item.quantity}×</span>
+                      <div key={idx} className="flex items-baseline gap-1.5 text-sm leading-tight">
+                        <span className="text-base font-black text-primary tabular-nums w-6 shrink-0">{item.quantity}×</span>
                         <span className="font-bold uppercase tracking-tight break-words">
                           {item.productName}
                           {item.pattyCount > 1 && <span className="text-muted-foreground font-medium"> · {MEDALLION_LABELS[item.pattyCount] || `${item.pattyCount}p`}</span>}
@@ -388,8 +387,8 @@ const KitchenView = ({ orders, onSendToKitchen, onMarkReady, isPending }) => {
                       </div>
                     ))}
                     {papasCount > 0 && (
-                      <div className="flex items-baseline gap-1 text-[11px] leading-tight">
-                        <span className="text-xs font-black text-yellow-400 tabular-nums w-5 shrink-0">{papasCount}×</span>
+                      <div className="flex items-baseline gap-1.5 text-sm leading-tight">
+                        <span className="text-base font-black text-yellow-400 tabular-nums w-6 shrink-0">{papasCount}×</span>
                         <span className="font-bold uppercase tracking-tight text-yellow-400">🍟 Papas</span>
                       </div>
                     )}
@@ -397,7 +396,7 @@ const KitchenView = ({ orders, onSendToKitchen, onMarkReady, isPending }) => {
                   <Button
                     onClick={() => onMarkReady(order.id)}
                     disabled={isProcessing}
-                    className="w-full h-10 bg-cyan-500 hover:bg-cyan-600 text-black text-xs font-black uppercase tracking-wide shadow-sm border-0"
+                    className="w-full h-11 bg-cyan-500 hover:bg-cyan-600 text-black text-sm font-black uppercase tracking-wide shadow-sm border-0"
                   >
                     <CheckCircle2 className="mr-1 h-4 w-4" />
                     {isProcessing ? '...' : 'Listo'}
@@ -434,15 +433,15 @@ const KitchenView = ({ orders, onSendToKitchen, onMarkReady, isPending }) => {
                 >
                   <div className="flex items-center gap-2">
                     <TimeSlotPill slot={order.deliveryTimeSlot} />
-                    <p className="text-sm font-black uppercase tracking-tight leading-tight break-words min-w-0 flex-1">
+                    <p className="text-base font-black uppercase tracking-tight leading-tight break-words min-w-0 flex-1">
                       {order.customerName || 'Sin nombre'}
                     </p>
                     <UrgencyBadge urgency={urgency} />
                   </div>
                   <div className="space-y-0.5">
                     {items.map((item, idx) => (
-                      <div key={idx} className="flex items-baseline gap-1 text-[11px] leading-tight">
-                        <span className="text-xs font-black text-primary tabular-nums w-5 shrink-0">{item.quantity}×</span>
+                      <div key={idx} className="flex items-baseline gap-1.5 text-sm leading-tight">
+                        <span className="text-base font-black text-primary tabular-nums w-6 shrink-0">{item.quantity}×</span>
                         <span className="font-bold uppercase tracking-tight break-words">
                           {item.productName}
                           {item.pattyCount > 1 && <span className="text-muted-foreground font-medium"> · {MEDALLION_LABELS[item.pattyCount] || `${item.pattyCount}p`}</span>}
@@ -450,8 +449,8 @@ const KitchenView = ({ orders, onSendToKitchen, onMarkReady, isPending }) => {
                       </div>
                     ))}
                     {papasCount > 0 && (
-                      <div className="flex items-baseline gap-1 text-[11px] leading-tight">
-                        <span className="text-xs font-black text-yellow-400 tabular-nums w-5 shrink-0">{papasCount}×</span>
+                      <div className="flex items-baseline gap-1.5 text-sm leading-tight">
+                        <span className="text-base font-black text-yellow-400 tabular-nums w-6 shrink-0">{papasCount}×</span>
                         <span className="font-bold uppercase tracking-tight text-yellow-400">🍟 Papas</span>
                       </div>
                     )}
@@ -502,6 +501,8 @@ const AdminDashboard = () => {
     status: 'all'
   });
   const [pendingIds, setPendingIds] = useState(() => new Set());
+  const [slotOccupancy, setSlotOccupancy] = useState([]);
+  const [maxMedallionsPerSlot, setMaxMedallionsPerSlot] = useState(20);
   const navigate = useNavigate();
 
   const isPending = (key) => pendingIds.has(key);
@@ -524,6 +525,28 @@ const AdminDashboard = () => {
   };
 
   useEffect(() => { loadData(); }, []);
+
+  // Polling de ocupación por tanda cada 30s para los chips de cabecera
+  useEffect(() => {
+    let cancelled = false;
+    const fetchOccupancy = async () => {
+      try {
+        const res = await apiServerClient.fetch('/slots/availability');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+        if (Array.isArray(data?.slots)) setSlotOccupancy(data.slots);
+        if (Number.isFinite(data?.maxMedallionsPerSlot)) {
+          setMaxMedallionsPerSlot(data.maxMedallionsPerSlot);
+        }
+      } catch (err) {
+        console.error('[AdminDashboard] slot occupancy failed:', err);
+      }
+    };
+    fetchOccupancy();
+    const id = setInterval(fetchOccupancy, 30000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
 
   const loadData = async () => {
     try {
@@ -865,6 +888,26 @@ const AdminDashboard = () => {
                     </button>
                   ))}
                 </div>
+                {slotOccupancy.length > 0 && (
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground w-14 shrink-0">Ocupación</span>
+                    {slotOccupancy.map((info) => {
+                      const chipCls = info.full
+                        ? 'bg-red-500/20 text-red-500 border-red-500/40'
+                        : info.available <= 3
+                          ? 'bg-yellow-500/20 text-yellow-500 border-yellow-500/40'
+                          : 'bg-green-500/20 text-green-500 border-green-500/40';
+                      return (
+                        <span
+                          key={info.slot}
+                          className={`px-2 py-0.5 rounded text-[10px] font-black tabular-nums border ${chipCls}`}
+                        >
+                          {info.slot} {info.usedMedallions}/{maxMedallionsPerSlot} med
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {loading ? (
@@ -883,20 +926,6 @@ const AdminDashboard = () => {
                     const borderCls = STATUS_BORDER_COLOR[order.orderStatus] || STATUS_BORDER_COLOR[ORDER_STATUS.PENDING];
                     const isProcessing = isPending(order.id);
                     const items = order.items || [];
-
-                    // Unified state taxonomy — order dimension
-                    const orderStateLabel =
-                      order.orderStatus === ORDER_STATUS.COOKING ? 'EN PREPARACIÓN' :
-                      order.orderStatus === ORDER_STATUS.READY ? 'LISTO' :
-                      order.orderStatus === ORDER_STATUS.IN_TRANSIT ? 'ENVIADO' :
-                      order.orderStatus === ORDER_STATUS.COMPLETED ? 'ENTREGADO' :
-                      'PENDIENTE';
-                    const orderStateCls =
-                      order.orderStatus === ORDER_STATUS.COOKING ? 'bg-blue-500/20 text-blue-400 border-blue-500/50' :
-                      order.orderStatus === ORDER_STATUS.READY ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/50' :
-                      order.orderStatus === ORDER_STATUS.IN_TRANSIT ? 'bg-orange-500/20 text-orange-400 border-orange-500/50' :
-                      order.orderStatus === ORDER_STATUS.COMPLETED ? 'bg-green-500/20 text-green-400 border-green-500/50' :
-                      'bg-yellow-500/20 text-yellow-400 border-yellow-500/50';
 
                     return (
                       <div
@@ -945,14 +974,14 @@ const AdminDashboard = () => {
                           ))}
                         </div>
 
-                        {/* Row 4: acciones (cobrar + enviar/finalizar) + state label — debajo del contenido */}
+                        {/* Row 4: acciones (cobrar + enviar/finalizar) — debajo del contenido */}
                         <div className="flex items-stretch gap-1 pt-1 border-t border-border">
                           {/* COBRADO / COBRAR: acción de pago — misma consistencia filled que En Camino */}
                           <Button
                             onClick={() => handleMarkPaid(order.id)}
                             disabled={!cashPending || isProcessing}
                             size="sm"
-                            className={`flex-1 h-8 shadow-sm text-[10px] font-black uppercase tracking-wide ${
+                            className={`flex-1 h-10 shadow-sm text-[10px] font-black uppercase tracking-wide ${
                               cashPending
                                 ? 'bg-green-500 hover:bg-green-600 text-black border-0'
                                 : 'bg-green-500/20 text-green-400 border border-green-500/40 disabled:opacity-100'
@@ -964,13 +993,13 @@ const AdminDashboard = () => {
 
                           {/* PENDIENTE: esperando que cocina tome el pedido */}
                           {(!order.orderStatus || order.orderStatus === ORDER_STATUS.PENDING) && (
-                            <div className="flex-1 h-8 flex items-center justify-center rounded-md bg-yellow-500/10 border border-yellow-500/30">
+                            <div className="flex-1 h-10 flex items-center justify-center rounded-md bg-yellow-500/10 border border-yellow-500/30">
                               <span className="text-[10px] text-yellow-500 font-black uppercase tracking-wide">Esperando cocina</span>
                             </div>
                           )}
                           {/* EN PREPARACIÓN: cocinero está trabajando */}
                           {order.orderStatus === ORDER_STATUS.COOKING && (
-                            <div className="flex-1 h-8 flex items-center justify-center rounded-md bg-blue-500/10 border border-blue-500/30">
+                            <div className="flex-1 h-10 flex items-center justify-center rounded-md bg-blue-500/10 border border-blue-500/30">
                               <span className="text-[10px] text-blue-400 font-black uppercase tracking-wide">Cocinando...</span>
                             </div>
                           )}
@@ -980,7 +1009,7 @@ const AdminDashboard = () => {
                               onClick={() => handleSendWhatsApp(order)}
                               disabled={isProcessing}
                               size="sm"
-                              className="btn-primary flex-1 h-8 shadow-sm text-[10px] font-black uppercase tracking-wide"
+                              className="btn-primary flex-1 h-10 shadow-sm text-[10px] font-black uppercase tracking-wide"
                             >
                               <Send className="mr-1 h-3 w-3" />
                               {isProcessing ? '...' : 'En Camino'}
@@ -992,22 +1021,17 @@ const AdminDashboard = () => {
                               disabled={isProcessing}
                               variant="outline"
                               size="sm"
-                              className="flex-1 h-8 btn-secondary text-[10px] font-black uppercase tracking-wide"
+                              className="flex-1 h-10 btn-secondary text-[10px] font-black uppercase tracking-wide"
                             >
                               <CheckCircle2 className="mr-1 h-3 w-3" />
                               {isProcessing ? '...' : 'Entregar'}
                             </Button>
                           )}
                           {order.orderStatus === ORDER_STATUS.COMPLETED && (
-                            <div className="flex-1 h-8 flex items-center justify-center rounded-md bg-green-500/10 border border-green-500/30">
+                            <div className="flex-1 h-10 flex items-center justify-center rounded-md bg-green-500/10 border border-green-500/30">
                               <span className="text-[10px] text-green-500 font-black uppercase tracking-wide">✓ Entregado</span>
                             </div>
                           )}
-
-                          {/* ESTADO: label con el estado actual del pedido */}
-                          <span className={`shrink-0 inline-flex items-center px-2 h-8 rounded-md border text-[10px] font-black uppercase tracking-wide ${orderStateCls}`}>
-                            {orderStateLabel}
-                          </span>
                         </div>
                       </div>
                     );
@@ -1077,6 +1101,8 @@ const AdminDashboard = () => {
                                   <p>Simple: <span className="font-bold text-primary">{formatPrice(product.simplePrice)}</span></p>
                                   <p>Doble: <span className="font-bold text-primary">{formatPrice(product.doublePrice)}</span></p>
                                   <p>Triple: <span className="font-bold text-primary">{formatPrice(product.triplePrice)}</span></p>
+                                  <p>Cuádruple: <span className={`font-bold ${product.quadruplePrice > 0 ? 'text-primary' : 'text-muted-foreground/50'}`}>{product.quadruplePrice > 0 ? formatPrice(product.quadruplePrice) : '—'}</span></p>
+                                  <p>Quíntuple: <span className={`font-bold ${product.quintuplePrice > 0 ? 'text-primary' : 'text-muted-foreground/50'}`}>{product.quintuplePrice > 0 ? formatPrice(product.quintuplePrice) : '—'}</span></p>
                                 </div>
                               ) : (
                                 <p className="font-bold text-primary">{formatPrice(product.fixedPrice)}</p>
@@ -1114,13 +1140,21 @@ const AdminDashboard = () => {
                 </div>
               )}
 
-              {productFormOpen && (
-                <ProductForm
-                  product={selectedProduct}
-                  onClose={() => { setProductFormOpen(false); setSelectedProduct(null); }}
-                  onSuccess={() => { setProductFormOpen(false); setSelectedProduct(null); loadData(); }}
-                />
-              )}
+              <ProductForm
+                product={selectedProduct}
+                open={productFormOpen}
+                onOpenChange={(v) => {
+                  if (!v) {
+                    setProductFormOpen(false);
+                    setSelectedProduct(null);
+                  }
+                }}
+                onSuccess={() => {
+                  setProductFormOpen(false);
+                  setSelectedProduct(null);
+                  loadData();
+                }}
+              />
             </TabsContent>
 
             {/* ── TAB: CLIENTES ── */}

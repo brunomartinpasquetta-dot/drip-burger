@@ -21,3 +21,11 @@ export const FORMA_PAGO = {
 };
 
 export const FORMA_PAGO_VALUES = Object.values(FORMA_PAGO);
+
+export const MEDALLION_LABELS = {
+  1: 'Simple',
+  2: 'Doble',
+  3: 'Triple',
+  4: 'Cuádruple',
+  5: 'Quíntuple',
+};

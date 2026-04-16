@@ -41,16 +41,12 @@ const Header = () => {
                   <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-widest text-secondary leading-tight">Streetwear Burgers</span>
                 </div>
               </Link>
-              {isAuthenticated && isAdmin && (
-                <Link
-                  to="/gestion"
-                  className="hidden md:inline-flex items-center gap-1 h-6 px-1.5 rounded border border-primary/40 bg-primary/10 text-primary hover:bg-primary/20 transition-colors text-[9px] font-black uppercase tracking-wide"
-                  title="Panel de Admin"
-                >
-                  <LayoutDashboard className="w-3 h-3" />
-                  Panel Admin
-                </Link>
-              )}
+              <div className="flex flex-col ml-2 sm:ml-4">
+                <span aria-hidden className="hidden sm:block text-base sm:text-lg font-black uppercase tracking-wider leading-tight invisible">.</span>
+                <span className="font-mono text-[9px] sm:text-[10px] font-normal tracking-tight text-white/70 leading-tight whitespace-nowrap">
+                  <span className="text-xs sm:text-sm align-middle">©</span> 2026 · Crafted by BPSG
+                </span>
+              </div>
             </div>
 
             {/* Desktop Navigation — el link Menú se movió a la HomePage (botón + carousel).
@@ -60,16 +56,16 @@ const Header = () => {
             {/* Global Actions Container (Mobile + Desktop) */}
             <div className="flex items-center space-x-2 sm:space-x-4">
               
-              {/* Cart Icon - prominente, fill el alto del top bar (pediste "el doble de grande") */}
+              {/* Cart Icon */}
               <div className="relative flex items-center">
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="hover:text-primary hover:bg-primary/10 transition-colors relative h-12 w-12 sm:h-14 sm:w-14"
+                  className="hover:text-primary hover:bg-primary/10 transition-colors relative h-10 w-10 sm:h-11 sm:w-11"
                   onClick={() => navigate('/carrito')}
                   aria-label="Ir al carrito"
                 >
-                  <ShoppingCart className="!h-10 !w-10 sm:!h-11 sm:!w-11" />
+                  <ShoppingCart className="!h-8 !w-8 sm:!h-9 sm:!w-9" />
                   {cartCount > 0 && (
                     <span className="absolute top-0 right-0 bg-[#F5A800] text-white text-[10px] font-black rounded-full w-5 h-5 flex items-center justify-center shadow-md border-2 border-background">
                       {cartCount}
@@ -124,6 +120,17 @@ const Header = () => {
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
+                )}
+                {isAuthenticated && isAdmin && (
+                  <Button
+                    asChild
+                    className="bg-primary hover:bg-primary/90 text-black font-black uppercase tracking-wide text-xs h-9 px-3"
+                  >
+                    <Link to="/gestion">
+                      <LayoutDashboard className="w-4 h-4 mr-1.5" />
+                      PANEL ADMIN
+                    </Link>
+                  </Button>
                 )}
               </div>
 

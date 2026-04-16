@@ -73,12 +73,15 @@ const StatusDot = ({ status }) => (
 //  Border-l dinámico: verde si está abierto, rojo si está cerrado
 //  (el estado de apertura es visible de un vistazo sin scrollear).
 // ══════════════════════════════════════════════════════════════════
+const DEFAULT_MAX_MEDALLIONS = 20;
+
 const OperacionCard = () => {
   const { isAuthReady, currentUser } = useAuth();
   const [settingsId, setSettingsId] = useState(null);
   const [precioEnvio, setPrecioEnvio] = useState(0);
-  const [horaApertura, setHoraApertura] = useState('20:00');
-  const [horaCierre, setHoraCierre] = useState('23:00');
+  const [horaApertura, setHoraApertura] = useState('');
+  const [horaCierre, setHoraCierre] = useState('');
+  const [maxMedallionsPerSlot, setMaxMedallionsPerSlot] = useState(DEFAULT_MAX_MEDALLIONS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [, forceTick] = useState(0);
@@ -96,8 +99,12 @@ const OperacionCard = () => {
           const rec = records.items[0];
           setSettingsId(rec.id);
           setPrecioEnvio(rec.precio_envio || 0);
-          setHoraApertura(rec.hora_apertura || '20:00');
-          setHoraCierre(rec.hora_cierre || '23:00');
+          setHoraApertura(rec.hora_apertura || '');
+          setHoraCierre(rec.hora_cierre || '');
+          const savedMax = Number(rec.maxMedallionsPerSlot);
+          setMaxMedallionsPerSlot(
+            Number.isFinite(savedMax) && savedMax > 0 ? savedMax : DEFAULT_MAX_MEDALLIONS
+          );
         }
       } catch (err) {
         console.error('[OperacionCard] load failed:', err);
@@ -116,12 +123,20 @@ const OperacionCard = () => {
   }, []);
 
   const handleSave = async () => {
+    // Guard: exigir ambos horarios explícitos para evitar el estado "siempre
+    // abierto" por default tolerante que ya pisó la tienda antes.
+    if (!horaApertura || !horaCierre) {
+      toast.error('Completá ambos horarios (apertura y cierre) antes de guardar');
+      return;
+    }
     setSaving(true);
     try {
+      const cleanMax = Math.max(0, Math.floor(Number(maxMedallionsPerSlot) || 0));
       const data = {
         precio_envio: Number(precioEnvio),
         hora_apertura: horaApertura,
         hora_cierre: horaCierre,
+        maxMedallionsPerSlot: cleanMax,
       };
       if (settingsId) {
         await pb.collection('settings').update(settingsId, data, { requestKey: null });
@@ -217,6 +232,34 @@ const OperacionCard = () => {
         </div>
         <p className="text-[10px] text-muted-foreground font-medium mt-2">
           Fuera del horario el botón "Hacer Pedido" queda deshabilitado. Soporta cruce de medianoche.
+        </p>
+      </div>
+
+      {/* Sección: Capacidad de producción por tanda */}
+      <div className="px-4 py-3 border-t border-border">
+        <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-2">
+          <Clock className="inline w-3 h-3 mr-1 -mt-0.5" />
+          Capacidad de producción por tanda
+        </p>
+        <div className="max-w-sm space-y-1">
+          <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground block">
+            Máximo de medallones
+          </label>
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              min="0"
+              max="500"
+              step="1"
+              value={maxMedallionsPerSlot}
+              onChange={(e) => setMaxMedallionsPerSlot(e.target.value)}
+              className="bg-background border-border text-foreground h-10 text-sm font-black tabular-nums w-32"
+            />
+            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wide">medallones</span>
+          </div>
+        </div>
+        <p className="text-[10px] text-muted-foreground font-medium mt-2">
+          Máximo de medallones que podés preparar en cada horario. Los productos sin medallones no cuentan.
         </p>
       </div>
 
