@@ -34,3 +34,4 @@ Thumbs.db
 
 # Dumps de contexto de sesión
 SESSION_CONTEXT.txt
+AUDIT_E2E_*.md
