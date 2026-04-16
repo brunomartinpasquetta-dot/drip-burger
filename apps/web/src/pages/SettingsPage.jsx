@@ -78,7 +78,8 @@ const DEFAULT_MAX_MEDALLIONS = 20;
 const OperacionCard = () => {
   const { isAuthReady, currentUser } = useAuth();
   const [settingsId, setSettingsId] = useState(null);
-  const [precioEnvio, setPrecioEnvio] = useState(0);
+  const [precioEnvioCentro, setPrecioEnvioCentro] = useState(0);
+  const [precioEnvioAlejado, setPrecioEnvioAlejado] = useState(0);
   const [horaApertura, setHoraApertura] = useState('');
   const [horaCierre, setHoraCierre] = useState('');
   const [maxMedallionsPerSlot, setMaxMedallionsPerSlot] = useState(DEFAULT_MAX_MEDALLIONS);
@@ -98,7 +99,13 @@ const OperacionCard = () => {
         if (records.items.length > 0) {
           const rec = records.items[0];
           setSettingsId(rec.id);
-          setPrecioEnvio(rec.precio_envio || 0);
+          const legacy = Number(rec.precio_envio) || 0;
+          setPrecioEnvioCentro(
+            rec.precio_envio_centro != null ? Number(rec.precio_envio_centro) || 0 : legacy
+          );
+          setPrecioEnvioAlejado(
+            rec.precio_envio_alejado != null ? Number(rec.precio_envio_alejado) || 0 : 0
+          );
           setHoraApertura(rec.hora_apertura || '');
           setHoraCierre(rec.hora_cierre || '');
           const savedMax = Number(rec.maxMedallionsPerSlot);
@@ -132,8 +139,12 @@ const OperacionCard = () => {
     setSaving(true);
     try {
       const cleanMax = Math.max(0, Math.floor(Number(maxMedallionsPerSlot) || 0));
+      const centroNum = Math.max(0, Number(precioEnvioCentro) || 0);
+      const alejadoNum = Math.max(0, Number(precioEnvioAlejado) || 0);
       const data = {
-        precio_envio: Number(precioEnvio),
+        precio_envio: centroNum, // legacy: sync con centro por compatibilidad
+        precio_envio_centro: centroNum,
+        precio_envio_alejado: alejadoNum,
         hora_apertura: horaApertura,
         hora_cierre: horaCierre,
         maxMedallionsPerSlot: cleanMax,
@@ -180,28 +191,50 @@ const OperacionCard = () => {
         </span>
       </div>
 
-      {/* Sección: Costo de envío */}
+      {/* Sección: Costo de envío por zona */}
       <div className="px-4 pb-3">
-        <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-2">Costo de envío</p>
-        <div className="flex items-end gap-3 flex-wrap">
-          <div className="flex-1 min-w-[180px]">
+        <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-2">Costo de envío por zona</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground block">Zona centro</label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-bold text-sm">$</span>
               <Input
                 type="number"
                 min="0"
                 step="0.01"
-                value={precioEnvio}
-                onChange={(e) => setPrecioEnvio(e.target.value)}
+                value={precioEnvioCentro}
+                onChange={(e) => setPrecioEnvioCentro(e.target.value)}
                 className="pl-7 bg-background border-border text-foreground h-10 text-sm font-black tabular-nums"
                 placeholder="0"
               />
             </div>
+            <p className="text-[10px] font-bold text-muted-foreground">
+              Preview: <span className="text-foreground">{formatShippingPreview(precioEnvioCentro)}</span>
+            </p>
           </div>
-          <span className="text-xs font-bold text-muted-foreground">
-            Preview: <span className="text-foreground">{formatShippingPreview(precioEnvio)}</span>
-          </span>
+          <div className="space-y-1">
+            <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground block">Zona alejada</label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-bold text-sm">$</span>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={precioEnvioAlejado}
+                onChange={(e) => setPrecioEnvioAlejado(e.target.value)}
+                className="pl-7 bg-background border-border text-foreground h-10 text-sm font-black tabular-nums"
+                placeholder="0"
+              />
+            </div>
+            <p className="text-[10px] font-bold text-muted-foreground">
+              Preview: <span className="text-foreground">{formatShippingPreview(precioEnvioAlejado)}</span>
+            </p>
+          </div>
         </div>
+        <p className="text-[10px] text-muted-foreground font-medium mt-2 leading-relaxed">
+          La <span className="text-foreground font-black">zona centro</span> corresponde al casco céntrico delimitado entre General López, Hipólito Yrigoyen, Lisandro de la Torre y Av. Héctor López. El resto se cobra como <span className="text-foreground font-black">zona alejada</span>.
+        </p>
       </div>
 
       {/* Sección: Horarios de atención */}

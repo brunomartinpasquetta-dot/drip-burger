@@ -26,7 +26,6 @@ const formatPrice = (price) => {
 const CartPage = () => {
   const { currentUser, isAuthenticated } = useAuth();
   const { cartItems, updateQuantity, removeFromCart, getCartTotal, clearCart } = useCart();
-  const { shippingPrice, loading: shippingLoading, formatShipping } = useShippingPrice();
   const { isOpen: storeIsOpen, horaApertura, horaCierre, loading: hoursLoading } = useStoreHours();
   const navigate = useNavigate();
 
@@ -38,6 +37,14 @@ const CartPage = () => {
     horario_reparto: '',
     forma_pago: 'Efectivo'
   });
+
+  const {
+    shippingPrice,
+    zona,
+    precios,
+    loading: shippingLoading,
+    formatShipping,
+  } = useShippingPrice(formData.direccion);
 
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -379,11 +386,30 @@ const CartPage = () => {
                     id="direccion"
                     value={formData.direccion}
                     onChange={(e) => setFormData({ ...formData, direccion: e.target.value })}
+                    placeholder="Ej: San Martín 1550"
                     className={cn(
                       "bg-background border-border text-foreground focus-visible:ring-1",
                       errors.direccion && "border-destructive bg-destructive/10 focus-visible:ring-destructive"
                     )}
                   />
+                  {formData.direccion.trim() && !shippingLoading && zona && (
+                    <div
+                      className={cn(
+                        "flex items-center justify-between gap-2 text-[11px] font-black uppercase tracking-wider px-2.5 py-1.5 rounded border",
+                        zona === 'centro'
+                          ? "text-green-400 border-green-500/40 bg-green-500/10"
+                          : "text-orange-400 border-orange-500/40 bg-orange-500/10"
+                      )}
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <span className="text-[8px]">●</span>
+                        {zona === 'centro' ? 'Zona centro' : 'Zona alejada'}
+                      </span>
+                      <span className="tabular-nums">
+                        {shippingPrice === 0 ? 'Envío gratis' : `Envío ${formatPrice(shippingPrice)}`}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-2 pt-2 border-t border-border/50">
@@ -490,7 +516,14 @@ const CartPage = () => {
                     </div>
 
                     <div className="flex justify-between text-sm font-medium items-center">
-                      <span className="text-muted-foreground uppercase tracking-wider">Envío</span>
+                      <span className="text-muted-foreground uppercase tracking-wider">
+                        Envío
+                        {zona && (
+                          <span className="ml-1.5 text-[10px] font-black tracking-widest opacity-70">
+                            · {zona === 'centro' ? 'CENTRO' : 'ALEJADA'}
+                          </span>
+                        )}
+                      </span>
                       {shippingLoading ? (
                         <Skeleton className="h-5 w-20" />
                       ) : (

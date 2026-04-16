@@ -22,10 +22,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Plus, Pencil, Trash2, Send, ChefHat, CheckCircle2, Banknote, MapPin, Phone, Clock, ArrowLeft, XCircle, Wallet, DollarSign, Loader2, Minus, TrendingUp, TrendingDown, BarChart3, Settings, Utensils } from 'lucide-react';
+import { Plus, Pencil, Trash2, Send, ChefHat, CheckCircle2, Banknote, MapPin, Phone, Clock, ArrowLeft, XCircle, Wallet, DollarSign, Loader2, Minus, TrendingUp, TrendingDown, BarChart3, Settings, Utensils, Printer } from 'lucide-react';
 import { SettingsContent } from './SettingsPage.jsx';
 import { ReportsContent } from './SalesReportingPage.jsx';
 import MenuPreviewContent from './admin/MenuPreviewContent.jsx';
+import DeliveryTicket from '@/components/DeliveryTicket.jsx';
 import { toast } from 'sonner';
 
 const formatPrice = (price) => {
@@ -94,6 +95,15 @@ const KitchenView = ({ orders, onSendToKitchen, onMarkReady, isPending }) => {
   const [selectedSlot, setSelectedSlot] = useState('all');
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [showAggregated, setShowAggregated] = useState(false);
+  const [ticketOrder, setTicketOrder] = useState(null);
+
+  const handlePrintTicket = (order) => {
+    setTicketOrder(order);
+    setTimeout(() => {
+      window.print();
+      setTimeout(() => setTicketOrder(null), 500);
+    }, 100);
+  };
 
   // Re-render cada 30s para que la clasificación de urgencia se mantenga actualizada
   const [, setTick] = useState(0);
@@ -468,6 +478,13 @@ const KitchenView = ({ orders, onSendToKitchen, onMarkReady, isPending }) => {
                       </div>
                     )}
                   </div>
+                  <Button
+                    onClick={() => handlePrintTicket(order)}
+                    className="w-full h-11 bg-white hover:bg-white/90 text-black border-2 border-white text-sm font-black uppercase tracking-wide shadow-sm"
+                  >
+                    <Printer className="mr-1 h-4 w-4" />
+                    Imprimir ticket
+                  </Button>
                 </div>
               );
             })}
@@ -494,6 +511,8 @@ const KitchenView = ({ orders, onSendToKitchen, onMarkReady, isPending }) => {
           </Button>
         </div>
       )}
+
+      {ticketOrder && <DeliveryTicket order={ticketOrder} />}
     </div>
   );
 };
