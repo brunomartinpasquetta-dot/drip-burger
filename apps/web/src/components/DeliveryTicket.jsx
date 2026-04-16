@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { MEDALLION_LABELS, FORMA_PAGO, PAYMENT_STATUS } from '@/lib/orderConstants';
 
 const fmtPrice = (n) =>
@@ -26,161 +27,204 @@ const formatDateTimeAr = (iso) => {
   }
 };
 
+const STYLE_ID = 'delivery-ticket-style';
+const PORTAL_ID = 'delivery-ticket-print';
+
 const PRINT_CSS = `
-@page {
-  size: 80mm auto;
-  margin: 3mm;
+@media screen {
+  #${PORTAL_ID} { display: none; }
 }
+
 @media print {
+  @page {
+    size: 80mm 297mm;
+    margin: 0;
+  }
   html, body {
-    background: #fff !important;
+    width: 80mm !important;
+    max-width: 80mm !important;
+    height: 297mm !important;
+    max-height: 297mm !important;
     margin: 0 !important;
     padding: 0 !important;
+    background: #fff !important;
+    overflow: hidden !important;
   }
-  body * {
-    visibility: hidden !important;
-    box-shadow: none !important;
+  body > *:not(#${PORTAL_ID}):not(#${STYLE_ID}) {
+    display: none !important;
   }
-  #delivery-ticket-print,
-  #delivery-ticket-print * {
-    visibility: visible !important;
+  #${PORTAL_ID} {
+    display: block !important;
+    position: static !important;
+    width: 80mm !important;
+    max-width: 80mm !important;
+    box-sizing: border-box !important;
+    margin: 0 !important;
+    padding: 2mm !important;
+    background: #fff !important;
+    color: #000 !important;
+    font-family: "Courier New", Courier, monospace !important;
+    page-break-inside: avoid !important;
+    page-break-before: avoid !important;
+    page-break-after: avoid !important;
+    break-inside: avoid !important;
+  }
+  #${PORTAL_ID} * {
     color: #000 !important;
     background: transparent !important;
-  }
-  #delivery-ticket-print {
-    display: block !important;
-    position: absolute !important;
-    left: 0 !important;
-    top: 0 !important;
-    width: 74mm !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    background: #fff !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    break-before: avoid !important;
+    break-after: avoid !important;
   }
 }
 
-#delivery-ticket-print { display: none; }
-
-#delivery-ticket-print .dt-brand {
-  font-size: 22pt;
+#${PORTAL_ID} {
+  font-family: "Courier New", Courier, monospace;
+  font-size: 9pt;
+  line-height: 1.25;
+  color: #000;
+  background: #fff;
+}
+#${PORTAL_ID} .dt-brand {
+  font-size: 14pt;
   font-weight: 900;
   text-align: center;
   letter-spacing: 0.04em;
-  line-height: 1.1;
-  margin: 2pt 0;
+  line-height: 1;
+  margin: 0 0 1pt;
 }
-#delivery-ticket-print .dt-divider-heavy {
+#${PORTAL_ID} .dt-divider-heavy {
   border: 0;
-  border-top: 3px double #000;
-  margin: 4pt 0;
+  border-top: 2px solid #000;
+  margin: 2pt 0;
   height: 0;
 }
-#delivery-ticket-print .dt-divider-light {
+#${PORTAL_ID} .dt-divider-light {
   border: 0;
   border-top: 1px dashed #000;
-  margin: 3pt 0;
+  margin: 2pt 0;
   height: 0;
 }
-#delivery-ticket-print .dt-section-title {
+#${PORTAL_ID} .dt-meta {
+  font-size: 8.5pt;
+  line-height: 1.25;
+}
+#${PORTAL_ID} .dt-block { margin: 2pt 0; }
+#${PORTAL_ID} .dt-customer-name {
+  font-size: 12pt;
+  font-weight: 900;
+  text-transform: uppercase;
+  line-height: 1.1;
+  word-wrap: break-word;
+}
+#${PORTAL_ID} .dt-phone {
+  font-size: 9pt;
+  font-weight: 700;
+  margin-top: 1pt;
+}
+#${PORTAL_ID} .dt-address-label {
+  font-size: 7.5pt;
+  font-weight: 900;
+  text-transform: uppercase;
+  margin-top: 2pt;
+  letter-spacing: 0.1em;
+}
+#${PORTAL_ID} .dt-address {
   font-size: 14pt;
   font-weight: 900;
   text-transform: uppercase;
-  text-align: center;
-  letter-spacing: 0.05em;
-  margin: 2pt 0;
-}
-#delivery-ticket-print .dt-meta {
-  font-size: 10pt;
-  line-height: 1.3;
-}
-#delivery-ticket-print .dt-block { margin: 4pt 0; }
-#delivery-ticket-print .dt-customer-name {
-  font-size: 20pt;
-  font-weight: 900;
-  text-transform: uppercase;
   line-height: 1.1;
+  margin-top: 0;
   word-wrap: break-word;
 }
-#delivery-ticket-print .dt-phone {
-  font-size: 13pt;
-  font-weight: 700;
-  margin-top: 4pt;
-}
-#delivery-ticket-print .dt-address-label {
-  font-size: 12pt;
-  font-weight: 900;
-  text-transform: uppercase;
-  margin-top: 6pt;
-  letter-spacing: 0.02em;
-}
-#delivery-ticket-print .dt-address {
-  font-size: 26pt;
-  font-weight: 900;
-  text-transform: uppercase;
-  line-height: 1.05;
-  margin-top: 2pt;
-  word-wrap: break-word;
-}
-#delivery-ticket-print .dt-item {
+#${PORTAL_ID} .dt-item {
   display: flex;
   justify-content: space-between;
-  gap: 6pt;
-  margin: 3pt 0;
-  font-size: 12pt;
-  line-height: 1.25;
+  gap: 4pt;
+  margin: 1pt 0;
+  font-size: 9pt;
+  line-height: 1.2;
 }
-#delivery-ticket-print .dt-item-name { font-weight: 700; flex: 1; }
-#delivery-ticket-print .dt-item-price {
+#${PORTAL_ID} .dt-item-name { font-weight: 700; flex: 1; }
+#${PORTAL_ID} .dt-item-price {
   font-weight: 700;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
-#delivery-ticket-print .dt-totals-row {
+#${PORTAL_ID} .dt-totals-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9pt;
+  margin: 1pt 0;
+}
+#${PORTAL_ID} .dt-total-row {
   display: flex;
   justify-content: space-between;
   font-size: 12pt;
-  margin: 2pt 0;
-}
-#delivery-ticket-print .dt-total-row {
-  display: flex;
-  justify-content: space-between;
-  font-size: 18pt;
   font-weight: 900;
-  margin: 4pt 0 2pt;
-  letter-spacing: 0.02em;
+  margin: 2pt 0 1pt;
 }
-#delivery-ticket-print .dt-payment-frame {
-  border: 4px solid #000;
-  padding: 10pt 6pt;
+#${PORTAL_ID} .dt-payment-frame {
+  border: 2px solid #000;
+  padding: 4pt;
   text-align: center;
-  margin: 10pt 0;
+  margin: 4pt 0 2pt;
 }
-#delivery-ticket-print .dt-payment-headline {
-  font-size: 22pt;
+#${PORTAL_ID} .dt-payment-headline {
+  font-size: 13pt;
   font-weight: 900;
   line-height: 1.1;
   letter-spacing: 0.02em;
   word-wrap: break-word;
 }
-#delivery-ticket-print .dt-payment-method {
-  font-size: 18pt;
+#${PORTAL_ID} .dt-payment-method {
+  font-size: 10pt;
   font-weight: 900;
   text-transform: uppercase;
-  margin-top: 8pt;
-  letter-spacing: 0.08em;
-}
-#delivery-ticket-print .dt-thanks {
-  text-align: center;
-  font-size: 14pt;
-  font-weight: 900;
-  text-transform: uppercase;
-  margin: 6pt 0;
-  letter-spacing: 0.04em;
+  margin-top: 2pt;
+  letter-spacing: 0.1em;
 }
 `;
 
+// Inyecta el <style> y el div portal una sola vez en document.body como hijos
+// directos, para que el selector `body > *:not(#delivery-ticket-print)` del
+// @media print pueda ocultar todo lo demás sin ambigüedad.
+const ensureDomNodes = () => {
+  if (typeof document === 'undefined') return null;
+  let styleNode = document.getElementById(STYLE_ID);
+  if (!styleNode) {
+    styleNode = document.createElement('style');
+    styleNode.id = STYLE_ID;
+    styleNode.textContent = PRINT_CSS;
+    document.head.appendChild(styleNode);
+  }
+  let portalNode = document.getElementById(PORTAL_ID);
+  if (!portalNode) {
+    portalNode = document.createElement('div');
+    portalNode.id = PORTAL_ID;
+    document.body.appendChild(portalNode);
+  }
+  return portalNode;
+};
+
 const DeliveryTicket = ({ order }) => {
-  if (!order) return null;
+  const portalRef = useRef(null);
+
+  if (portalRef.current === null) {
+    portalRef.current = ensureDomNodes();
+  }
+
+  useEffect(() => {
+    return () => {
+      const node = document.getElementById(PORTAL_ID);
+      if (node) node.innerHTML = '';
+    };
+  }, []);
+
+  if (!order || !portalRef.current) return null;
 
   const items = order.items || [];
   const shipping = order.precio_envio_snapshot || 0;
@@ -227,86 +271,73 @@ const DeliveryTicket = ({ order }) => {
     );
   };
 
-  return (
+  const ticketContent = (
     <>
-      <style>{PRINT_CSS}</style>
-      <div
-        id="delivery-ticket-print"
-        style={{ fontFamily: '"Courier New", Courier, monospace' }}
-      >
-        <div className="dt-brand">DRIP BURGER</div>
-        <hr className="dt-divider-heavy" />
+      <div className="dt-brand">DRIP BURGER</div>
+      <hr className="dt-divider-heavy" />
 
-        <div className="dt-block dt-meta">
-          <div style={{ fontWeight: 900, fontSize: '11pt' }}>
-            PEDIDO #{order.orderNumber || order.id}
-          </div>
-          <div>{formatDateTimeAr(order.created)}</div>
+      <div className="dt-meta">
+        <div style={{ fontWeight: 900 }}>
+          #{order.orderNumber || order.id}
+        </div>
+        <div>
+          {formatDateTimeAr(order.created)}
           {order.deliveryTimeSlot && (
-            <div>
-              Horario entrega:{' '}
-              <strong style={{ fontSize: '12pt' }}>{order.deliveryTimeSlot}</strong>
-            </div>
+            <> · Entrega <strong>{order.deliveryTimeSlot}</strong></>
           )}
         </div>
+      </div>
 
-        <hr className="dt-divider-heavy" />
-        <div className="dt-section-title">Cliente</div>
-        <hr className="dt-divider-heavy" />
+      <hr className="dt-divider-heavy" />
 
-        <div className="dt-block">
-          <div className="dt-customer-name">{order.customerName || '—'}</div>
-          {order.customerPhone && (
-            <div className="dt-phone">Tel: {order.customerPhone}</div>
-          )}
-          <div className="dt-address-label">Dirección</div>
-          <div className="dt-address">{order.customerAddress || '—'}</div>
+      <div className="dt-block">
+        <div className="dt-customer-name">{order.customerName || '—'}</div>
+        {order.customerPhone && (
+          <div className="dt-phone">Tel: {order.customerPhone}</div>
+        )}
+        <div className="dt-address-label">Dirección</div>
+        <div className="dt-address">{order.customerAddress || '—'}</div>
+      </div>
+
+      <hr className="dt-divider-heavy" />
+
+      <div className="dt-block">
+        {items.length === 0 ? (
+          <div className="dt-meta">Sin ítems</div>
+        ) : (
+          items.map(renderItem)
+        )}
+
+        <hr className="dt-divider-light" />
+        <div className="dt-totals-row">
+          <span>Subtotal:</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+            {fmtPrice(itemsTotal)}
+          </span>
         </div>
-
-        <hr className="dt-divider-heavy" />
-        <div className="dt-section-title">Pedido</div>
-        <hr className="dt-divider-heavy" />
-
-        <div className="dt-block">
-          {items.length === 0 ? (
-            <div className="dt-meta">Sin ítems</div>
-          ) : (
-            items.map(renderItem)
-          )}
-
-          <hr className="dt-divider-light" />
-          <div className="dt-totals-row">
-            <span>Subtotal:</span>
-            <span style={{ fontVariantNumeric: 'tabular-nums' }}>
-              {fmtPrice(itemsTotal)}
-            </span>
-          </div>
-          <div className="dt-totals-row">
-            <span>Envío:</span>
-            <span style={{ fontVariantNumeric: 'tabular-nums' }}>
-              {fmtPrice(shipping)}
-            </span>
-          </div>
-          <hr className="dt-divider-light" />
-          <div className="dt-total-row">
-            <span>TOTAL:</span>
-            <span style={{ fontVariantNumeric: 'tabular-nums' }}>
-              {fmtPrice(total)}
-            </span>
-          </div>
+        <div className="dt-totals-row">
+          <span>Envío:</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+            {fmtPrice(shipping)}
+          </span>
         </div>
-
-        <div className="dt-payment-frame">
-          <div className="dt-payment-headline">{paymentHeadline}</div>
-          <div className="dt-payment-method">{paymentMethodLabel}</div>
+        <hr className="dt-divider-light" />
+        <div className="dt-total-row">
+          <span>TOTAL:</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+            {fmtPrice(total)}
+          </span>
         </div>
+      </div>
 
-        <hr className="dt-divider-heavy" />
-        <div className="dt-thanks">¡Gracias!</div>
-        <hr className="dt-divider-heavy" />
+      <div className="dt-payment-frame">
+        <div className="dt-payment-headline">{paymentHeadline}</div>
+        <div className="dt-payment-method">{paymentMethodLabel}</div>
       </div>
     </>
   );
+
+  return createPortal(ticketContent, portalRef.current);
 };
 
 export default DeliveryTicket;

@@ -480,10 +480,11 @@ const KitchenView = ({ orders, onSendToKitchen, onMarkReady, isPending }) => {
                   </div>
                   <Button
                     onClick={() => handlePrintTicket(order)}
-                    className="w-full h-11 bg-white hover:bg-white/90 text-black border-2 border-white text-sm font-black uppercase tracking-wide shadow-sm"
+                    type="button"
+                    className="w-full h-11 bg-white hover:bg-gray-100 text-black border-2 border-white text-sm font-black uppercase tracking-wide shadow-md"
                   >
-                    <Printer className="mr-1 h-4 w-4" />
-                    Imprimir ticket
+                    <Printer className="mr-1.5 h-4 w-4" />
+                    🖨 Imprimir ticket
                   </Button>
                 </div>
               );
@@ -1105,7 +1106,16 @@ const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState('orders');
   const [jornadaActiva, setJornadaActiva] = useState(null);
   const [jornadaLoading, setJornadaLoading] = useState(true);
+  const [ticketOrder, setTicketOrder] = useState(null);
   const navigate = useNavigate();
+
+  const handlePrintTicket = (order) => {
+    setTicketOrder(order);
+    setTimeout(() => {
+      window.print();
+      setTimeout(() => setTicketOrder(null), 500);
+    }, 100);
+  };
 
   const TAB_TITLES = {
     orders: 'Pedidos',
@@ -1709,17 +1719,28 @@ const AdminDashboard = () => {
                               <span className="text-[10px] text-blue-400 font-black uppercase tracking-wide">Cocinando...</span>
                             </div>
                           )}
-                          {/* LISTO → En Camino + WA (la cocina ya terminó) */}
+                          {/* LISTO → Imprimir ticket + En Camino + WA (la cocina ya terminó) */}
                           {order.orderStatus === ORDER_STATUS.READY && (
-                            <Button
-                              onClick={() => handleSendWhatsApp(order)}
-                              disabled={isProcessing}
-                              size="sm"
-                              className="btn-primary flex-1 h-10 shadow-sm text-[10px] font-black uppercase tracking-wide"
-                            >
-                              <Send className="mr-1 h-3 w-3" />
-                              {isProcessing ? '...' : 'En Camino'}
-                            </Button>
+                            <>
+                              <Button
+                                onClick={() => handlePrintTicket(order)}
+                                type="button"
+                                size="sm"
+                                className="flex-1 h-10 bg-white hover:bg-gray-100 text-black border-2 border-white shadow-md text-[10px] font-black uppercase tracking-wide"
+                              >
+                                <Printer className="mr-1 h-3 w-3" />
+                                🖨 Ticket
+                              </Button>
+                              <Button
+                                onClick={() => handleSendWhatsApp(order)}
+                                disabled={isProcessing}
+                                size="sm"
+                                className="btn-primary flex-1 h-10 shadow-sm text-[10px] font-black uppercase tracking-wide"
+                              >
+                                <Send className="mr-1 h-3 w-3" />
+                                {isProcessing ? '...' : 'En Camino'}
+                              </Button>
+                            </>
                           )}
                           {order.orderStatus === ORDER_STATUS.IN_TRANSIT && (
                             <Button
@@ -2014,6 +2035,8 @@ const AdminDashboard = () => {
           </Tabs>
         </div>
       </div>
+
+      {ticketOrder && <DeliveryTicket order={ticketOrder} />}
     </>
   );
 };
