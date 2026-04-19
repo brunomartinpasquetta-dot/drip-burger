@@ -1702,8 +1702,10 @@ const AdminDashboard = () => {
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
                   {sortedOrders.map(order => {
-                    const isPaid = order.paymentMethod === 'Transferencia' || order.paymentStatus === PAYMENT_STATUS.PAID;
+                    const isPaid = order.paymentStatus === PAYMENT_STATUS.PAID;
+                    const isTransfer = order.paymentMethod === 'Transferencia';
                     const cashPending = order.paymentMethod === 'Efectivo' && !isPaid;
+                    const transferPending = isTransfer && !isPaid;
                     const borderCls = STATUS_BORDER_COLOR[order.orderStatus] || STATUS_BORDER_COLOR[ORDER_STATUS.PENDING];
                     const isProcessing = isPending(order.id);
                     const isCancelled = order.orderStatus === ORDER_STATUS.CANCELLED;
@@ -1767,20 +1769,29 @@ const AdminDashboard = () => {
                           </div>
                         ) : (
                         <div className="flex items-stretch gap-1 pt-1 border-t border-border">
-                          {/* COBRADO / COBRAR: acción de pago — misma consistencia filled que En Camino */}
-                          <Button
-                            onClick={() => handleMarkPaid(order.id)}
-                            disabled={!cashPending || isProcessing}
-                            size="sm"
-                            className={`flex-1 h-10 shadow-sm text-[10px] font-black uppercase tracking-wide ${
-                              cashPending
-                                ? 'bg-green-500 hover:bg-green-600 text-black border-0'
-                                : 'bg-green-500/20 text-green-400 border border-green-500/40 disabled:opacity-100'
-                            }`}
-                          >
-                            <Banknote className="mr-1 h-3 w-3" />
-                            {cashPending ? 'Cobrar' : '✓ Cobrado'}
-                          </Button>
+                          {/* Bloque de pago: varía según forma_pago y paymentStatus */}
+                          {transferPending ? (
+                            <div className="flex-1 h-10 flex items-center justify-center rounded-md bg-amber-500/15 border border-amber-500/40 px-2">
+                              <Clock className="w-3 h-3 text-amber-400 mr-1.5 shrink-0" />
+                              <span className="text-[10px] text-amber-400 font-black uppercase tracking-wide truncate">
+                                Esperando pago MP
+                              </span>
+                            </div>
+                          ) : (
+                            <Button
+                              onClick={() => handleMarkPaid(order.id)}
+                              disabled={!cashPending || isProcessing}
+                              size="sm"
+                              className={`flex-1 h-10 shadow-sm text-[10px] font-black uppercase tracking-wide ${
+                                cashPending
+                                  ? 'bg-green-500 hover:bg-green-600 text-black border-0'
+                                  : 'bg-green-500/20 text-green-400 border border-green-500/40 disabled:opacity-100'
+                              }`}
+                            >
+                              <Banknote className="mr-1 h-3 w-3" />
+                              {cashPending ? 'Cobrar' : (isTransfer ? '✓ Pagado MP' : '✓ Cobrado')}
+                            </Button>
+                          )}
 
                           {/* PENDIENTE: esperando que cocina tome el pedido */}
                           {(!order.orderStatus || order.orderStatus === ORDER_STATUS.PENDING) && (

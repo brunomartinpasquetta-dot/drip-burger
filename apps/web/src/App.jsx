@@ -15,6 +15,7 @@ import AdminDashboard from './pages/AdminDashboard.jsx';
 import SalesReportingPage from './pages/SalesReportingPage.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
 import EditOrdersPage from './pages/EditOrdersPage.jsx';
+import { PaymentFailedPage, PaymentPendingPage } from './pages/PaymentReturnPages.jsx';
 import { Toaster } from '@/components/ui/sonner';
 
 function App() {
@@ -47,6 +48,9 @@ function App() {
             <Route path="/menu" element={<CustomerMenuPage />} />
             <Route path="/carrito" element={<CartPage />} />
             <Route path="/confirmacion/:orderId" element={<ConfirmationPage />} />
+            <Route path="/pedido-confirmado/:orderId" element={<ConfirmationPage />} />
+            <Route path="/pedido-fallido/:orderId" element={<PaymentFailedPage />} />
+            <Route path="/pedido-pendiente/:orderId" element={<PaymentPendingPage />} />
             <Route path="/login" element={<LoginPage />} />
 
             {/* Protected Admin Routes */}

@@ -3,13 +3,14 @@ import React, { useEffect, useState } from 'react';
 import { useLocation, useParams, Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
 import pb from '@/lib/pocketbaseClient';
+import apiServerClient from '@/lib/apiServerClient';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 import Header from '@/components/Header.jsx';
 import RegistrationModal from '@/components/RegistrationModal.jsx';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { CheckCircle2, Clock, MapPin, Receipt, ArrowRight } from 'lucide-react';
+import { CheckCircle2, Clock, MapPin, Receipt, ArrowRight, Loader2 } from 'lucide-react';
 
 const formatPrice = (price) => {
   return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(price || 0);
@@ -42,6 +43,42 @@ const ConfirmationPage = () => {
       fetchOrder();
     }
   }, [id, order]);
+
+  // Si viene desde MP (/pedido-confirmado) y el pago aún figura pendiente,
+  // el webhook puede demorar — polleamos /payments/status por hasta 20s.
+  const backFromMp = location.pathname.startsWith('/pedido-confirmado');
+  const [mpPolling, setMpPolling] = useState(false);
+  useEffect(() => {
+    if (!order) return;
+    if (!backFromMp) return;
+    if (order.paymentMethod !== 'Transferencia') return;
+    if (order.paymentStatus === 'Pagado') return;
+
+    setMpPolling(true);
+    let active = true;
+    let attempts = 0;
+    const poll = async () => {
+      while (active && attempts < 10) {
+        attempts += 1;
+        try {
+          const res = await apiServerClient.fetch(`/payments/status/${id}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.paymentStatus === 'Pagado') {
+              if (active) setOrder((prev) => ({ ...prev, paymentStatus: 'Pagado' }));
+              break;
+            }
+          }
+        } catch (e) {
+          // noop — seguimos intentando
+        }
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+      if (active) setMpPolling(false);
+    };
+    poll();
+    return () => { active = false; };
+  }, [order, backFromMp, id]);
 
   if (loading) {
     return (
@@ -94,6 +131,36 @@ const ConfirmationPage = () => {
             <p className="text-xl text-muted-foreground font-medium">
               Tu número de orden es <span className="font-black text-foreground">#{order.orderNumber}</span>
             </p>
+
+            {/* Badge de estado de pago */}
+            {(() => {
+              const isTransfer = order.paymentMethod === 'Transferencia';
+              const isPaid = order.paymentStatus === 'Pagado';
+              if (isTransfer && isPaid) {
+                return (
+                  <div className="mt-6 inline-flex items-center gap-2 px-4 py-2 rounded-lg border-2 border-green-500/40 bg-green-500/10 text-green-400">
+                    <CheckCircle2 className="w-5 h-5" />
+                    <span className="font-black uppercase tracking-wide text-sm">Pagado · Mercado Pago</span>
+                  </div>
+                );
+              }
+              if (isTransfer && !isPaid) {
+                return (
+                  <div className="mt-6 inline-flex items-center gap-2 px-4 py-2 rounded-lg border-2 border-amber-500/40 bg-amber-500/10 text-amber-400">
+                    {mpPolling ? <Loader2 className="w-5 h-5 animate-spin" /> : <Clock className="w-5 h-5" />}
+                    <span className="font-black uppercase tracking-wide text-sm">
+                      {mpPolling ? 'Verificando pago...' : 'Pago pendiente de confirmación'}
+                    </span>
+                  </div>
+                );
+              }
+              return (
+                <div className="mt-6 inline-flex items-center gap-2 px-4 py-2 rounded-lg border-2 border-amber-500/40 bg-amber-500/10 text-amber-400">
+                  <Clock className="w-5 h-5" />
+                  <span className="font-black uppercase tracking-wide text-sm">Pago pendiente · Abonar al delivery</span>
+                </div>
+              );
+            })()}
           </div>
 
           <div className="grid gap-6 mb-10">

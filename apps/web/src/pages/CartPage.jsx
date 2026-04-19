@@ -164,15 +164,6 @@ const CartPage = () => {
       return;
     }
 
-    if (formData.forma_pago === 'Transferencia') {
-      toast('Integración con Mercado Pago próximamente', {
-        icon: '🚧',
-        style: { background: 'var(--accent-orange)', color: 'var(--text-dark)', border: 'none' }
-      });
-      return;
-    }
-
-    // Process Efectivo
     setIsSubmitting(true);
     try {
       const nombreCompleto = `${formData.nombre} ${formData.apellido}`.trim();
@@ -209,6 +200,32 @@ const CartPage = () => {
       }
 
       const order = await pb.collection('orders').create(orderData, { requestKey: null });
+
+      if (formData.forma_pago === 'Transferencia') {
+        // Crear preferencia MP y redirigir al checkout de Mercado Pago
+        try {
+          const res = await apiServerClient.fetch('/payments/create-preference', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orderId: order.id }),
+          });
+          if (!res.ok) {
+            const errBody = await res.json().catch(() => ({}));
+            throw new Error(errBody.error || `HTTP ${res.status}`);
+          }
+          const { initPoint } = await res.json();
+          if (!initPoint) throw new Error('Mercado Pago no devolvió initPoint');
+          clearCart();
+          window.location.href = initPoint;
+          return;
+        } catch (err) {
+          console.error('[CartPage] MP preference failed:', err);
+          toast.error('No se pudo iniciar el pago con Mercado Pago. Probá con Efectivo o intentá de nuevo.');
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
       clearCart();
       navigate(`/confirmacion/${order.id}`, { state: { order } });
     } catch (error) {
@@ -496,7 +513,7 @@ const CartPage = () => {
                     </SelectTrigger>
                     <SelectContent className="bg-card border-border">
                       <SelectItem value="Efectivo" className="font-bold uppercase focus:bg-primary/20 focus:text-primary">Efectivo al recibir</SelectItem>
-                      <SelectItem value="Transferencia" disabled className="font-bold uppercase opacity-50 cursor-not-allowed">Transferencia (próximamente)</SelectItem>
+                      <SelectItem value="Transferencia" className="font-bold uppercase focus:bg-primary/20 focus:text-primary">Transferencia / Mercado Pago</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
