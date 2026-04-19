@@ -26,7 +26,12 @@ import { Plus, Pencil, Trash2, Send, ChefHat, CheckCircle2, Banknote, MapPin, Ph
 import { SettingsContent } from './SettingsPage.jsx';
 import { ReportsContent } from './SalesReportingPage.jsx';
 import MenuPreviewContent from './admin/MenuPreviewContent.jsx';
-import DeliveryTicket from '@/components/DeliveryTicket.jsx';
+import {
+  connectPrinter,
+  isPrinterConnected,
+  printDeliveryTicket,
+  printKitchenOrder,
+} from '@/lib/escposPrinter.js';
 import { toast } from 'sonner';
 
 const formatPrice = (price) => {
@@ -95,14 +100,43 @@ const KitchenView = ({ orders, onSendToKitchen, onMarkReady, isPending }) => {
   const [selectedSlot, setSelectedSlot] = useState('all');
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [showAggregated, setShowAggregated] = useState(false);
-  const [ticketOrder, setTicketOrder] = useState(null);
+  const [printerConnected, setPrinterConnected] = useState(() => isPrinterConnected());
+  const [printBusy, setPrintBusy] = useState(false);
 
-  const handlePrintTicket = (order) => {
-    setTicketOrder(order);
-    setTimeout(() => {
-      window.print();
-      setTimeout(() => setTicketOrder(null), 500);
-    }, 100);
+  const handleConnectPrinter = async () => {
+    try {
+      await connectPrinter();
+      setPrinterConnected(true);
+      toast.success('Impresora conectada');
+    } catch (err) {
+      setPrinterConnected(false);
+      toast.error('No se pudo conectar: ' + (err.message || err));
+    }
+  };
+
+  const handlePrintKitchenOrder = async () => {
+    if (printBusy) return;
+    const matchSlot = (o) => selectedSlot === 'all' || o.deliveryTimeSlot === selectedSlot;
+    const isPend = (o) =>
+      !o.orderStatus ||
+      o.orderStatus === ORDER_STATUS.PENDING ||
+      o.orderStatus === ORDER_STATUS.COOKING;
+    const pending = orders.filter((o) => matchSlot(o) && isPend(o));
+    if (pending.length === 0) {
+      toast.error('No hay pedidos pendientes para imprimir');
+      return;
+    }
+    setPrintBusy(true);
+    try {
+      await printKitchenOrder(pending, selectedSlot === 'all' ? 'TODOS' : selectedSlot);
+      setPrinterConnected(true);
+      toast.success(`Comanda impresa (${pending.length} pedidos)`);
+    } catch (err) {
+      setPrinterConnected(isPrinterConnected());
+      toast.error('Error al imprimir: ' + (err.message || err));
+    } finally {
+      setPrintBusy(false);
+    }
   };
 
   // Re-render cada 30s para que la clasificación de urgencia se mantenga actualizada
@@ -131,26 +165,22 @@ const KitchenView = ({ orders, onSendToKitchen, onMarkReady, isPending }) => {
     .filter(o => o.orderStatus === ORDER_STATUS.COOKING)
     .sort(sortBySlotThenCreated);
 
-  const readyOrders = slotFiltered
-    .filter(o => o.orderStatus === ORDER_STATUS.READY)
-    .sort(sortBySlotThenCreated);
-
   const pendingPapasTotal = pendingOrders.reduce((sum, o) => sum + orderPapasCount(o), 0);
 
   // Agregado de items que están ACTUALMENTE en preparación
   const { productMap: cookingMap, papasTotal: cookingPapas } = aggregateItems(cookingOrders);
   const hasCookingItems = Object.keys(cookingMap).length > 0;
 
-  // Contadores por slot para el selector (sumando pendientes + en preparación + listos)
+  // Contadores por slot — sólo pendientes + en preparación (los listos se ven en tab Pedidos)
   const slotCounts = {};
   TIME_SLOTS.forEach(slot => {
     slotCounts[slot] = orders.filter(o =>
       o.deliveryTimeSlot === slot &&
-      (!o.orderStatus || o.orderStatus === ORDER_STATUS.PENDING || o.orderStatus === ORDER_STATUS.COOKING || o.orderStatus === ORDER_STATUS.READY)
+      (!o.orderStatus || o.orderStatus === ORDER_STATUS.PENDING || o.orderStatus === ORDER_STATUS.COOKING)
     ).length;
   });
   const totalActive = orders.filter(o =>
-    !o.orderStatus || o.orderStatus === ORDER_STATUS.PENDING || o.orderStatus === ORDER_STATUS.COOKING || o.orderStatus === ORDER_STATUS.READY
+    !o.orderStatus || o.orderStatus === ORDER_STATUS.PENDING || o.orderStatus === ORDER_STATUS.COOKING
   ).length;
 
   // Limpiar selección cuando cambia el slot o cuando un pedido deja de estar pendiente
@@ -182,10 +212,46 @@ const KitchenView = ({ orders, onSendToKitchen, onMarkReady, isPending }) => {
     }
   };
 
-  const handleSendSelected = async () => {
+  const [sendConfirmOpen, setSendConfirmOpen] = useState(false);
+
+  const sendSelectedOrders = async (alsoPrint) => {
     if (selectedIds.size === 0) return;
-    await onSendToKitchen(Array.from(selectedIds));
+    const idsToSend = Array.from(selectedIds);
+    const ordersToSend = orders.filter(o => selectedIds.has(o.id));
+    setSendConfirmOpen(false);
     setSelectedIds(new Set());
+    await onSendToKitchen(idsToSend);
+    if (alsoPrint && ordersToSend.length > 0) {
+      setPrintBusy(true);
+      try {
+        await printKitchenOrder(
+          ordersToSend,
+          selectedSlot === 'all' ? 'TODOS' : selectedSlot
+        );
+        setPrinterConnected(true);
+        toast.success(`Comanda impresa (${ordersToSend.length} pedidos)`);
+      } catch (err) {
+        setPrinterConnected(isPrinterConnected());
+        toast.error('Error al imprimir: ' + (err.message || err));
+      } finally {
+        setPrintBusy(false);
+      }
+    }
+  };
+
+  const handlePrintSingleCooking = async (order) => {
+    if (printBusy) return;
+    setPrintBusy(true);
+    try {
+      await printKitchenOrder([order], order.deliveryTimeSlot || 'TODOS');
+      setPrinterConnected(true);
+      toast.success('Comanda reimpresa');
+    } catch (err) {
+      setPrinterConnected(isPrinterConnected());
+      toast.error('Error al imprimir: ' + (err.message || err));
+    } finally {
+      setPrintBusy(false);
+    }
   };
 
   const TimeSlotPill = ({ slot }) => (
@@ -207,6 +273,30 @@ const KitchenView = ({ orders, onSendToKitchen, onMarkReady, isPending }) => {
 
   return (
     <div className="space-y-4 pb-20">
+      {/* Barra de impresora — conectar + comanda cocina */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <button
+          onClick={handleConnectPrinter}
+          className={`px-3 h-9 rounded-lg text-xs font-black uppercase tracking-wide border-2 transition-all inline-flex items-center gap-1.5 ${
+            printerConnected
+              ? 'bg-green-500/15 border-green-500/50 text-green-400'
+              : 'bg-card border-border text-muted-foreground hover:border-primary/50'
+          }`}
+        >
+          <Printer className="w-3.5 h-3.5" />
+          {printerConnected ? 'Impresora conectada ✓' : 'Conectar impresora'}
+        </button>
+        <Button
+          onClick={handlePrintKitchenOrder}
+          type="button"
+          disabled={printBusy}
+          className="btn-primary h-9 px-3 text-xs font-black uppercase tracking-wide"
+        >
+          <Printer className="mr-1.5 h-3.5 w-3.5" />
+          {printBusy ? '...' : 'Imprimir comanda'}
+        </Button>
+      </div>
+
       {/* Selector de turno — botones táctiles para uso en cocina */}
       <div className="flex gap-2 flex-wrap">
         <button
@@ -416,14 +506,26 @@ const KitchenView = ({ orders, onSendToKitchen, onMarkReady, isPending }) => {
                       </div>
                     )}
                   </div>
-                  <Button
-                    onClick={() => onMarkReady(order.id)}
-                    disabled={isProcessing}
-                    className="w-full h-11 bg-cyan-500 hover:bg-cyan-600 text-black text-sm font-black uppercase tracking-wide shadow-sm border-0"
-                  >
-                    <CheckCircle2 className="mr-1 h-4 w-4" />
-                    {isProcessing ? '...' : 'Listo'}
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={() => handlePrintSingleCooking(order)}
+                      type="button"
+                      disabled={isProcessing || printBusy}
+                      variant="outline"
+                      className="h-11 w-11 shrink-0 border-2 border-border bg-card hover:bg-muted text-foreground p-0"
+                      title="Reimprimir comanda"
+                    >
+                      <Printer className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      onClick={() => onMarkReady(order.id)}
+                      disabled={isProcessing}
+                      className="flex-1 h-11 bg-cyan-500 hover:bg-cyan-600 text-black text-sm font-black uppercase tracking-wide shadow-sm border-0"
+                    >
+                      <CheckCircle2 className="mr-1 h-4 w-4" />
+                      {isProcessing ? '...' : 'Listo'}
+                    </Button>
+                  </div>
                 </div>
               );
             })}
@@ -431,69 +533,9 @@ const KitchenView = ({ orders, onSendToKitchen, onMarkReady, isPending }) => {
         </section>
       )}
 
-      {/* ── 3. LISTOS PARA ENVIAR (terminados por cocina, esperando delivery) ── */}
-      {readyOrders.length > 0 && (
-        <section className="space-y-2">
-          <div className="flex items-center gap-2">
-            <div className="inline-flex items-center gap-1.5 bg-cyan-500 text-black px-2 py-1 rounded">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              <span className="text-xs font-black uppercase tracking-wide">Listos para enviar</span>
-            </div>
-            <span className="text-xs text-muted-foreground font-bold uppercase">
-              {readyOrders.length} {readyOrders.length === 1 ? 'pedido' : 'pedidos'}
-            </span>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
-            {readyOrders.map(order => {
-              const items = order.items || [];
-              const papasCount = orderPapasCount(order);
-              const urgency = getOrderUrgency(order);
-              const urgencyRing = URGENCY_RING[urgency];
-              return (
-                <div
-                  key={order.id}
-                  className={`bg-card border border-border border-l-[4px] border-l-cyan-500 rounded-lg overflow-hidden flex flex-col text-xs p-2 gap-1.5 ${urgencyRing}`}
-                >
-                  <div className="flex items-center gap-2">
-                    <TimeSlotPill slot={order.deliveryTimeSlot} />
-                    <p className="text-base font-black uppercase tracking-tight leading-tight break-words min-w-0 flex-1">
-                      {order.customerName || 'Sin nombre'}
-                    </p>
-                    <UrgencyBadge urgency={urgency} />
-                  </div>
-                  <div className="space-y-0.5">
-                    {items.map((item, idx) => (
-                      <div key={idx} className="flex items-baseline gap-1.5 text-sm leading-tight">
-                        <span className="text-base font-black text-primary tabular-nums w-6 shrink-0">{item.quantity}×</span>
-                        <span className="font-bold uppercase tracking-tight break-words">
-                          {item.productName}
-                          {item.pattyCount > 1 && <span className="text-muted-foreground font-medium"> · {MEDALLION_LABELS[item.pattyCount] || `${item.pattyCount}p`}</span>}
-                        </span>
-                      </div>
-                    ))}
-                    {papasCount > 0 && (
-                      <div className="flex items-baseline gap-1.5 text-sm leading-tight">
-                        <span className="text-base font-black text-yellow-400 tabular-nums w-6 shrink-0">{papasCount}×</span>
-                        <span className="font-bold uppercase tracking-tight text-yellow-400">🍟 Papas</span>
-                      </div>
-                    )}
-                  </div>
-                  <Button
-                    onClick={() => handlePrintTicket(order)}
-                    type="button"
-                    className="w-full h-11 bg-white hover:bg-gray-100 text-black border-2 border-white text-sm font-black uppercase tracking-wide shadow-md"
-                  >
-                    <Printer className="mr-1.5 h-4 w-4" />
-                    🖨 Imprimir ticket
-                  </Button>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      )}
+      {/* Sección "Listos para enviar" removida — se consultan en tab Pedidos/Listo */}
 
-      {pendingOrders.length === 0 && !hasCookingItems && readyOrders.length === 0 && (
+      {pendingOrders.length === 0 && !hasCookingItems && (
         <div className="bg-card border border-border rounded-xl py-16 text-center">
           <ChefHat className="w-12 h-12 mx-auto mb-4 text-muted-foreground/30" />
           <p className="text-xl font-bold uppercase text-muted-foreground">Sin pedidos activos</p>
@@ -504,7 +546,7 @@ const KitchenView = ({ orders, onSendToKitchen, onMarkReady, isPending }) => {
       {selectedIds.size > 0 && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50">
           <Button
-            onClick={handleSendSelected}
+            onClick={() => setSendConfirmOpen(true)}
             className="btn-primary h-12 px-6 shadow-2xl text-sm font-black uppercase tracking-wide"
           >
             <ChefHat className="mr-2 h-5 w-5" />
@@ -513,7 +555,36 @@ const KitchenView = ({ orders, onSendToKitchen, onMarkReady, isPending }) => {
         </div>
       )}
 
-      {ticketOrder && <DeliveryTicket order={ticketOrder} />}
+      <Dialog open={sendConfirmOpen} onOpenChange={setSendConfirmOpen}>
+        <DialogContent className="bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-black uppercase tracking-tight">
+              Enviar {selectedIds.size} {selectedIds.size === 1 ? 'pedido' : 'pedidos'} a cocina
+            </DialogTitle>
+            <DialogDescription className="font-medium">
+              ¿Querés imprimir la comanda ESC/POS al mismo tiempo?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex flex-col sm:flex-row gap-2">
+            <Button
+              variant="outline"
+              onClick={() => sendSelectedOrders(false)}
+              disabled={printBusy}
+              className="h-11 border-border text-xs font-black uppercase tracking-wide"
+            >
+              Solo enviar
+            </Button>
+            <Button
+              onClick={() => sendSelectedOrders(true)}
+              disabled={printBusy}
+              className="btn-primary h-11 text-xs font-black uppercase tracking-wide"
+            >
+              <Printer className="mr-1.5 h-4 w-4" />
+              Enviar e imprimir comanda
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
@@ -1106,15 +1177,19 @@ const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState('orders');
   const [jornadaActiva, setJornadaActiva] = useState(null);
   const [jornadaLoading, setJornadaLoading] = useState(true);
-  const [ticketOrder, setTicketOrder] = useState(null);
+  const [printBusy, setPrintBusy] = useState(false);
   const navigate = useNavigate();
 
-  const handlePrintTicket = (order) => {
-    setTicketOrder(order);
-    setTimeout(() => {
-      window.print();
-      setTimeout(() => setTicketOrder(null), 500);
-    }, 100);
+  const handlePrintTicket = async (order) => {
+    if (printBusy) return;
+    setPrintBusy(true);
+    try {
+      await printDeliveryTicket(order);
+    } catch (err) {
+      toast.error('Error al imprimir: ' + (err.message || err));
+    } finally {
+      setPrintBusy(false);
+    }
   };
 
   const TAB_TITLES = {
@@ -1725,11 +1800,12 @@ const AdminDashboard = () => {
                               <Button
                                 onClick={() => handlePrintTicket(order)}
                                 type="button"
+                                disabled={printBusy}
                                 size="sm"
                                 className="flex-1 h-10 bg-white hover:bg-gray-100 text-black border-2 border-white shadow-md text-[10px] font-black uppercase tracking-wide"
                               >
                                 <Printer className="mr-1 h-3 w-3" />
-                                🖨 Ticket
+                                {printBusy ? '...' : '🖨 Ticket'}
                               </Button>
                               <Button
                                 onClick={() => handleSendWhatsApp(order)}
@@ -2035,8 +2111,6 @@ const AdminDashboard = () => {
           </Tabs>
         </div>
       </div>
-
-      {ticketOrder && <DeliveryTicket order={ticketOrder} />}
     </>
   );
 };
