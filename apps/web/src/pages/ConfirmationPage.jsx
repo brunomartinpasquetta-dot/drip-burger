@@ -44,13 +44,11 @@ const ConfirmationPage = () => {
     }
   }, [id, order]);
 
-  // Si viene desde MP (/pedido-confirmado) y el pago aún figura pendiente,
-  // el webhook puede demorar — polleamos /payments/status por hasta 20s.
-  const backFromMp = location.pathname.startsWith('/pedido-confirmado');
+  // Si el pago figura pendiente y la forma es Transferencia, polleamos
+  // /payments/status por hasta 20s para capturar el webhook con delay.
   const [mpPolling, setMpPolling] = useState(false);
   useEffect(() => {
     if (!order) return;
-    if (!backFromMp) return;
     if (order.paymentMethod !== 'Transferencia') return;
     if (order.paymentStatus === 'Pagado') return;
 
@@ -78,7 +76,7 @@ const ConfirmationPage = () => {
     };
     poll();
     return () => { active = false; };
-  }, [order, backFromMp, id]);
+  }, [order, id]);
 
   if (loading) {
     return (
@@ -140,7 +138,7 @@ const ConfirmationPage = () => {
                 return (
                   <div className="mt-6 inline-flex items-center gap-2 px-4 py-2 rounded-lg border-2 border-green-500/40 bg-green-500/10 text-green-400">
                     <CheckCircle2 className="w-5 h-5" />
-                    <span className="font-black uppercase tracking-wide text-sm">Pagado · Mercado Pago</span>
+                    <span className="font-black uppercase tracking-wide text-sm">Pagado ✓</span>
                   </div>
                 );
               }
@@ -149,15 +147,15 @@ const ConfirmationPage = () => {
                   <div className="mt-6 inline-flex items-center gap-2 px-4 py-2 rounded-lg border-2 border-amber-500/40 bg-amber-500/10 text-amber-400">
                     {mpPolling ? <Loader2 className="w-5 h-5 animate-spin" /> : <Clock className="w-5 h-5" />}
                     <span className="font-black uppercase tracking-wide text-sm">
-                      {mpPolling ? 'Verificando pago...' : 'Pago pendiente de confirmación'}
+                      {mpPolling ? 'Verificando pago...' : '⏳ Esperando confirmación de pago'}
                     </span>
                   </div>
                 );
               }
               return (
-                <div className="mt-6 inline-flex items-center gap-2 px-4 py-2 rounded-lg border-2 border-amber-500/40 bg-amber-500/10 text-amber-400">
+                <div className="mt-6 inline-flex items-center gap-2 px-4 py-2 rounded-lg border-2 border-primary/50 bg-primary/10 text-primary">
                   <Clock className="w-5 h-5" />
-                  <span className="font-black uppercase tracking-wide text-sm">Pago pendiente · Abonar al delivery</span>
+                  <span className="font-black uppercase tracking-wide text-sm">Pago en efectivo al delivery</span>
                 </div>
               );
             })()}

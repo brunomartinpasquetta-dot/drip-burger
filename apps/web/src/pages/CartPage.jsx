@@ -15,7 +15,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Minus, Plus, Trash2, ShoppingBag } from 'lucide-react';
+import { Minus, Plus, Trash2, ShoppingBag, Loader2 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 
@@ -48,6 +48,7 @@ const CartPage = () => {
 
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [redirectingToMp, setRedirectingToMp] = useState(false);
 
   // Disponibilidad de tandas: [{slot, usedMedallions, available, full}]
   const [slotAvailability, setSlotAvailability] = useState([]);
@@ -203,6 +204,7 @@ const CartPage = () => {
 
       if (formData.forma_pago === 'Transferencia') {
         // Crear preferencia MP y redirigir al checkout de Mercado Pago
+        setRedirectingToMp(true);
         try {
           const res = await apiServerClient.fetch('/payments/create-preference', {
             method: 'POST',
@@ -220,6 +222,7 @@ const CartPage = () => {
           return;
         } catch (err) {
           console.error('[CartPage] MP preference failed:', err);
+          setRedirectingToMp(false);
           toast.error('No se pudo iniciar el pago con Mercado Pago. Probá con Efectivo o intentá de nuevo.');
           setIsSubmitting(false);
           return;
@@ -234,6 +237,30 @@ const CartPage = () => {
       setIsSubmitting(false);
     }
   };
+
+  if (redirectingToMp) {
+    return (
+      <>
+        <Helmet><title>Redirigiendo a Mercado Pago...</title></Helmet>
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#0a0a0a] px-6">
+          <h1
+            className="text-5xl md:text-6xl font-black uppercase tracking-tighter mb-2"
+            style={{ fontFamily: 'Bangers, system-ui, sans-serif', color: '#F5A800', letterSpacing: '0.02em' }}
+          >
+            DRIP BURGER
+          </h1>
+          <div className="w-16 h-1 bg-primary/40 rounded-full mb-10" />
+          <Loader2 className="w-14 h-14 text-primary animate-spin mb-6" />
+          <p className="text-xl md:text-2xl font-black uppercase tracking-wide text-foreground text-center max-w-md">
+            Te estamos redirigiendo a Mercado Pago...
+          </p>
+          <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mt-3">
+            No cierres esta ventana
+          </p>
+        </div>
+      </>
+    );
+  }
 
   if (cartItems.length === 0) {
     return (
@@ -513,9 +540,14 @@ const CartPage = () => {
                     </SelectTrigger>
                     <SelectContent className="bg-card border-border">
                       <SelectItem value="Efectivo" className="font-bold uppercase focus:bg-primary/20 focus:text-primary">Efectivo al recibir</SelectItem>
-                      <SelectItem value="Transferencia" className="font-bold uppercase focus:bg-primary/20 focus:text-primary">Transferencia / Mercado Pago</SelectItem>
+                      <SelectItem value="Transferencia" className="font-bold uppercase focus:bg-primary/20 focus:text-primary">Pagar online</SelectItem>
                     </SelectContent>
                   </Select>
+                  {formData.forma_pago === 'Transferencia' && (
+                    <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mt-1">
+                      Tarjeta, transferencia o Mercado Pago
+                    </p>
+                  )}
                 </div>
               </div>
             </div>

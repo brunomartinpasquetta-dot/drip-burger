@@ -6,8 +6,8 @@ import { decrypt } from '../utils/crypto.js';
 
 const router = express.Router();
 
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3001';
-const API_PUBLIC_URL = process.env.API_PUBLIC_URL || process.env.API_URL || '';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'https://dripburger.shop';
+const API_PUBLIC_URL = process.env.API_PUBLIC_URL || process.env.API_URL || 'https://api.dripburger.shop';
 
 const getMpAccessToken = async () => {
     const rec = await pb.collection('integrations').getFirstListItem('key="mercadopago"', { requestKey: null });
@@ -58,6 +58,13 @@ router.post('/create-preference', async (req, res) => {
                     ? `${API_PUBLIC_URL}/payments/webhook`
                     : undefined,
                 payer: order.customerEmail ? { email: order.customerEmail } : undefined,
+                payment_methods: {
+                    // Sin efectivo (Rapipago / Pago Fácil) — no tiene sentido para delivery
+                    excluded_payment_types: [
+                        { id: 'ticket' },
+                        { id: 'atm' },
+                    ],
+                },
                 metadata: {
                     orderId: String(order.id),
                     orderNumber: order.orderNumber || '',
