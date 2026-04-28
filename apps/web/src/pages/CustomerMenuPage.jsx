@@ -22,7 +22,7 @@ const CustomerMenuPage = () => {
   const loadProducts = async () => {
     const queryParams = {
       filter: 'available = true',
-      sort: 'name',
+      sort: 'orden,created',
       requestKey: null
     };
 

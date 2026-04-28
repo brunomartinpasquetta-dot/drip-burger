@@ -182,6 +182,11 @@ const CartPage = () => {
           productId: item.productId,
           productName: item.productName,
           hasMedallions: item.hasMedallions !== false,
+          // Snapshot — la comanda y el ticket leen este flag, no el producto vivo
+          incluyeFritas:
+            typeof item.incluyeFritas === 'boolean'
+              ? item.incluyeFritas
+              : item.hasMedallions !== false,
           pattyCount: item.pattyCount,
           quantity: item.quantity,
           price: item.price

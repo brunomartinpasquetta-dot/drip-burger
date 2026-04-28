@@ -36,7 +36,7 @@ const HomePage = () => {
       try {
         const res = await pb.collection('products').getList(1, 50, {
           filter: 'available = true',
-          sort: 'name',
+          sort: 'orden,created',
           requestKey: null,
         });
         if (mounted) setProducts(res.items || []);

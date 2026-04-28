@@ -20,7 +20,7 @@ const MenuPreviewContent = () => {
       setError(null);
       const result = await pb.collection('products').getList(1, 50, {
         filter: 'available = true',
-        sort: 'name',
+        sort: 'orden,created',
         requestKey: null,
       });
       setProducts(result.items || []);

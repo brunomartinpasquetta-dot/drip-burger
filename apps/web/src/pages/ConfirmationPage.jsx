@@ -201,20 +201,28 @@ const ConfirmationPage = () => {
                 </div>
 
                 <div className="space-y-4 mb-6">
-                  {items.map((item, idx) => (
-                    <div key={idx} className="flex justify-between items-start text-sm">
-                      <div>
-                        <p className="font-bold uppercase">
-                          {item.quantity > 1 && <span className="text-primary tabular-nums">{item.quantity}× </span>}
-                          {item.productName}
-                          {item.hasMedallions !== false && (
-                            <span className="text-muted-foreground font-medium"> · {item.pattyCount} {item.pattyCount === 1 ? 'medallón' : 'medallones'}</span>
+                  {items.map((item, idx) => {
+                    const lleva = typeof item.incluyeFritas === 'boolean'
+                      ? item.incluyeFritas
+                      : item.hasMedallions !== false;
+                    return (
+                      <div key={idx} className="flex justify-between items-start text-sm">
+                        <div>
+                          <p className="font-bold uppercase">
+                            {item.quantity > 1 && <span className="text-primary tabular-nums">{item.quantity}× </span>}
+                            {item.productName}
+                            {item.hasMedallions !== false && (
+                              <span className="text-muted-foreground font-medium"> · {item.pattyCount} {item.pattyCount === 1 ? 'medallón' : 'medallones'}</span>
+                            )}
+                          </p>
+                          {lleva && (
+                            <p className="text-xs mt-0.5" style={{ color: '#999' }}>+ papas fritas</p>
                           )}
-                        </p>
+                        </div>
+                        <span className="font-bold tabular-nums">{formatPrice(item.price * item.quantity)}</span>
                       </div>
-                      <span className="font-bold tabular-nums">{formatPrice(item.price * item.quantity)}</span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 <div className="border-t border-border pt-4 space-y-3">

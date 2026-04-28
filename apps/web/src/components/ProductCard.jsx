@@ -78,7 +78,14 @@ const ProductCard = ({ product }) => {
       </div>
       
       <CardContent className="p-6 flex-1 flex flex-col">
-        <h3 className="product-name mb-2">{name}</h3>
+        <h3 className="product-name mb-1">{name}</h3>
+        {(typeof safeProduct.incluyeFritas === 'boolean'
+          ? safeProduct.incluyeFritas
+          : hasMedallions) && (
+          <p className="text-xs mb-2" style={{ color: '#999' }}>
+            + papas fritas
+          </p>
+        )}
         <p className="text-sm text-muted-foreground mb-4 line-clamp-2 flex-1">
           {description}
         </p>

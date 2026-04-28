@@ -15,6 +15,7 @@ const ProductForm = ({ product, open, onOpenChange, onSuccess }) => {
     name: '',
     description: '',
     hasMedallions: true,
+    incluyeFritas: true,
     simplePrice: '',
     doublePrice: '',
     triplePrice: '',
@@ -33,6 +34,10 @@ const ProductForm = ({ product, open, onOpenChange, onSuccess }) => {
         name: product.name || '',
         description: product.description || '',
         hasMedallions: product.hasMedallions ?? true,
+        incluyeFritas:
+          typeof product.incluyeFritas === 'boolean'
+            ? product.incluyeFritas
+            : (product.hasMedallions ?? true),
         simplePrice: product.simplePrice || '',
         doublePrice: product.doublePrice || '',
         triplePrice: product.triplePrice || '',
@@ -52,6 +57,7 @@ const ProductForm = ({ product, open, onOpenChange, onSuccess }) => {
         name: '',
         description: '',
         hasMedallions: true,
+        incluyeFritas: true,
         simplePrice: '',
         doublePrice: '',
         triplePrice: '',
@@ -87,6 +93,7 @@ const ProductForm = ({ product, open, onOpenChange, onSuccess }) => {
       data.append('name', formData.name);
       data.append('description', formData.description);
       data.append('hasMedallions', formData.hasMedallions);
+      data.append('incluyeFritas', formData.incluyeFritas);
       data.append('available', formData.available);
       data.append('internalNote', formData.internalNote);
 
@@ -191,6 +198,17 @@ const ProductForm = ({ product, open, onOpenChange, onSuccess }) => {
               <Switch
                 checked={formData.hasMedallions}
                 onCheckedChange={(checked) => setFormData({ ...formData, hasMedallions: checked })}
+              />
+            </div>
+
+            <div className="flex items-center justify-between p-4 bg-background rounded-lg border border-border">
+              <div className="space-y-0.5">
+                <Label className="text-sm font-bold uppercase tracking-wider">Incluye papas fritas</Label>
+                <p className="text-xs text-muted-foreground">Aparece en el catálogo y se imprime en la comanda</p>
+              </div>
+              <Switch
+                checked={formData.incluyeFritas}
+                onCheckedChange={(checked) => setFormData({ ...formData, incluyeFritas: checked })}
               />
             </div>
 

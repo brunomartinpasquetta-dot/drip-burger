@@ -5,18 +5,55 @@
 let usbDevice = null;
 let endpointOut = null;
 
+// VendorIDs comunes de impresoras térmicas + chipsets OEM que aparecen en Hassar.
+// Si la Hassar no aparece con esta lista, el modo fallback usa filtros de clase
+// (printer class 0x07 + vendor-specific 0xff) que cubren prácticamente cualquier
+// impresora térmica USB, incluyendo unidades OEM con vendorId no documentado.
 const USB_FILTERS = [
-  { vendorId: 0x0483 }, // Xprinter
-  { vendorId: 0x1a86 }, // Xprinter (QinHeng / CH340 chipset)
+  { vendorId: 0x0416 }, // Winbond / Hassar OEM
+  { vendorId: 0x0483 }, // STMicroelectronics / Xprinter
   { vendorId: 0x04b8 }, // Epson
-  { vendorId: 0x0519 }, // HASAR
-  { vendorId: 0x0416 }, // Genérico Winbond
+  { vendorId: 0x0519 }, // Star Micronics
+  { vendorId: 0x067b }, // Prolific (USB-Serial bridge)
+  { vendorId: 0x1a86 }, // QinHeng / CH340 (Xprinter, genéricos)
+  { vendorId: 0x0fe6 }, // ICS Advent
   { vendorId: 0x154f }, // SNBC / BTP
-  { vendorId: 0x0fe6 }, // ICS Advent / genéricos
+  { vendorId: 0x28e9 }, // GD32
 ];
+
+const FALLBACK_FILTERS = [
+  { classCode: 0x07 }, // USB Printer class
+  { classCode: 0xff }, // Vendor-specific (la mayoría de las térmicas OEM)
+  {},                  // Cualquier dispositivo (Chrome lo soporta)
+];
+
+// Mensajes accionables a partir de los errores comunes de WebUSB.
+function describeUsbError(err) {
+  const name = err?.name || '';
+  const message = err?.message || String(err);
+  const lower = message.toLowerCase();
+
+  if (name === 'NotFoundError' || lower.includes('no device selected')) {
+    return 'Ninguna impresora seleccionada. Conectá la Hassar al USB y volvé a intentar.';
+  }
+  if (lower.includes('access denied') || lower.includes('unable to claim') || lower.includes('access was denied')) {
+    return 'Windows está bloqueando el acceso a la impresora. Hay que instalar el driver WinUSB con Zadig (ver guía).';
+  }
+  if (lower.includes('disconnected') || name === 'NetworkError') {
+    return 'La impresora se desconectó. Revisá el cable USB y reintentá.';
+  }
+  if (name === 'SecurityError') {
+    return 'Acceso a USB bloqueado. Verificá que estés en HTTPS o localhost y que el navegador permita WebUSB.';
+  }
+  if (lower.includes('not supported')) {
+    return 'WebUSB no está disponible en este navegador. Usá Chrome o Edge en desktop.';
+  }
+  return `Error de impresora (${name || 'unknown'}): ${message}`;
+}
 
 async function claimFirstOutEndpoint(device) {
   const config = device.configuration;
+  if (!config) throw new Error('La impresora no expone configuración USB');
   for (const iface of config.interfaces) {
     for (const alt of iface.alternates) {
       const out = alt.endpoints.find((e) => e.direction === 'out');
@@ -36,47 +73,127 @@ async function claimFirstOutEndpoint(device) {
       }
     }
   }
-  throw new Error('No se encontró endpoint OUT en la impresora');
+  throw new Error('La impresora no tiene endpoint OUT (USB no compatible con ESC/POS)');
 }
 
-export async function connectPrinter() {
+async function openAndClaim(device) {
+  if (!device.opened) await device.open();
+  if (!device.configuration) await device.selectConfiguration(1);
+  const out = await claimFirstOutEndpoint(device);
+  usbDevice = device;
+  endpointOut = out;
+  return true;
+}
+
+// Listener global: si el usuario desenchufa la impresora, invalidar caché para
+// que el próximo intento gatille reconexión limpia.
+if (typeof navigator !== 'undefined' && navigator.usb && !navigator.usb.__dripListenersAttached) {
+  navigator.usb.addEventListener('disconnect', (event) => {
+    if (usbDevice && event.device === usbDevice) {
+      usbDevice = null;
+      endpointOut = null;
+    }
+  });
+  navigator.usb.__dripListenersAttached = true;
+}
+
+// Recupera dispositivos previamente autorizados (sin pedir permiso).
+// Llamado al cargar el módulo: si el cliente ya autorizó la Hassar antes,
+// reconectamos transparente al recargar la página.
+async function tryAutoReconnect() {
+  if (typeof navigator === 'undefined' || !navigator.usb) return false;
+  try {
+    const granted = await navigator.usb.getDevices();
+    if (granted.length === 0) return false;
+
+    // Preferir un device cuyo vendorId esté en la lista; si no, agarrar el primero
+    // (el usuario ya dio permiso explícito, así que es legítimo).
+    const known = granted.find((d) =>
+      USB_FILTERS.some((f) => f.vendorId === d.vendorId)
+    );
+    const device = known || granted[0];
+    await openAndClaim(device);
+    return true;
+  } catch (err) {
+    // Silenciar — auto-reconnect es best-effort
+    console.warn('[escpos] auto-reconnect skipped:', err.name, err.message);
+    usbDevice = null;
+    endpointOut = null;
+    return false;
+  }
+}
+
+if (typeof window !== 'undefined') {
+  // Disparar en background sin bloquear el bundle
+  tryAutoReconnect();
+}
+
+/**
+ * Conecta la impresora térmica.
+ * @param {Object} [options]
+ * @param {boolean} [options.fallback=false] — si true, muestra TODOS los USB
+ *   en el chooser (útil cuando Hassar no aparece con los filtros por VID).
+ */
+export async function connectPrinter(options = {}) {
+  const { fallback = false } = options;
+
   if (usbDevice && usbDevice.opened && endpointOut) return true;
 
-  if (!navigator.usb) {
-    throw new Error(
-      'Este navegador no soporta WebUSB. Usá Chrome o Edge en desktop.'
-    );
+  if (typeof navigator === 'undefined' || !navigator.usb) {
+    throw new Error('Este navegador no soporta WebUSB. Usá Chrome o Edge en desktop.');
   }
 
   try {
-    // Reutilizar permisos previos si existen
+    // 1) Intentar reusar permiso previo
     const granted = await navigator.usb.getDevices();
     let device = granted.find((d) =>
       USB_FILTERS.some((f) => f.vendorId === d.vendorId)
-    );
+    ) || (granted.length === 1 ? granted[0] : null);
 
+    // 2) Si no hay nada autorizado, pedir selección al usuario
     if (!device) {
-      device = await navigator.usb.requestDevice({ filters: USB_FILTERS });
+      const filters = fallback ? FALLBACK_FILTERS : USB_FILTERS;
+      try {
+        device = await navigator.usb.requestDevice({ filters });
+      } catch (err) {
+        // Si los filtros estrictos no encontraron nada y no estábamos en fallback,
+        // dar un único reintento automático con filtros amplios. Esto ayuda con
+        // unidades OEM cuyo VID no está en nuestra lista.
+        if (!fallback && err?.name === 'NotFoundError') {
+          console.warn('[escpos] strict filters got NotFoundError — el usuario debe activar fallback manualmente');
+        }
+        throw err;
+      }
     }
 
-    if (!device.opened) await device.open();
-    if (!device.configuration) await device.selectConfiguration(1);
-
-    const out = await claimFirstOutEndpoint(device);
-
-    usbDevice = device;
-    endpointOut = out;
+    await openAndClaim(device);
     return true;
   } catch (err) {
-    console.error('[escpos] connect failed:', err);
+    console.error('[escpos] connect failed:', err.name, err.message);
     usbDevice = null;
     endpointOut = null;
-    throw err;
+    const friendly = describeUsbError(err);
+    const wrapped = new Error(friendly);
+    wrapped.name = err.name || 'PrinterError';
+    wrapped.cause = err;
+    throw wrapped;
   }
 }
 
 export function isPrinterConnected() {
   return !!(usbDevice && usbDevice.opened && endpointOut);
+}
+
+export function getPrinterInfo() {
+  if (!usbDevice) return null;
+  return {
+    connected: isPrinterConnected(),
+    vendorId: usbDevice.vendorId,
+    productId: usbDevice.productId,
+    productName: usbDevice.productName || '',
+    manufacturerName: usbDevice.manufacturerName || '',
+    serialNumber: usbDevice.serialNumber || '',
+  };
 }
 
 export async function disconnectPrinter() {
@@ -88,6 +205,32 @@ export async function disconnectPrinter() {
   }
   usbDevice = null;
   endpointOut = null;
+}
+
+/**
+ * Imprime un ticket corto de prueba (3 líneas + corte). Usalo desde el
+ * panel de configuración para verificar conexión real con la impresora.
+ */
+export async function printTestTicket() {
+  await connectPrinter();
+  await cmd(CMD.INIT);
+  await cmd(CMD.CODEPAGE_858);
+
+  await cmd(CMD.CENTER);
+  await cmd(CMD.BOLD_ON);
+  await cmd(CMD.DOUBLE_SIZE);
+  await line('DRIP BURGER');
+  await cmd(CMD.NORMAL_SIZE);
+  await cmd(CMD.BOLD_OFF);
+  await separator('=');
+
+  await cmd(CMD.LEFT);
+  await line('Test de impresora');
+  await line('Conexion ESC/POS OK');
+  await line(new Date().toLocaleString('es-AR'));
+
+  await cmd(CMD.FEED_3);
+  await cmd(CMD.CUT);
 }
 
 // ── Write helpers ───────────────────────────────────────────────
@@ -141,6 +284,17 @@ async function lineWithPrice(label, price) {
 
 function fmtPrice(n) {
   return '$' + Math.round(Number(n) || 0).toLocaleString('es-AR');
+}
+
+// Determina si un item del snapshot lleva fritas.
+// Compatibilidad retro: orders viejos (anteriores al campo) NO traen
+// `incluyeFritas` en el snapshot. Para esos casos, asumimos que las hamburguesas
+// (hasMedallions === true) sí incluyen fritas y los nuggets no — que es la
+// regla de negocio que estaba implícita antes del feature.
+export function itemIncluyeFritas(item) {
+  if (!item) return false;
+  if (typeof item.incluyeFritas === 'boolean') return item.incluyeFritas;
+  return item.hasMedallions !== false;
 }
 
 // ── ESC/POS commands ────────────────────────────────────────────
@@ -235,6 +389,9 @@ export async function printDeliveryTicket(order) {
     await cmd(CMD.BOLD_ON);
     await lineWithPrice(label, lineTotal);
     await cmd(CMD.BOLD_OFF);
+    if (itemIncluyeFritas(item)) {
+      await line('  + PAPAS FRITAS');
+    }
   }
 
   await separator('-');
@@ -333,7 +490,7 @@ export async function printKitchenOrder(orders, timeSlot) {
         '  ' + qty + 'x ' + (item.productName || '').toUpperCase() + pattyLabel
       );
       await cmd(CMD.BOLD_OFF);
-      if (isBurger) papasDelPedido += qty;
+      if (itemIncluyeFritas(item)) papasDelPedido += qty;
     }
 
     if (papasDelPedido > 0) {
@@ -357,6 +514,8 @@ export async function printKitchenOrder(orders, timeSlot) {
       const isBurger = item.hasMedallions !== false;
       if (isBurger) {
         totalMedallones += (item.pattyCount || 0) * qty;
+      }
+      if (itemIncluyeFritas(item)) {
         totalPapas += qty;
       }
     }

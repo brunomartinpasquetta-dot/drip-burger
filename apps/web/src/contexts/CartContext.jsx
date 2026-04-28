@@ -36,13 +36,23 @@ export const CartProvider = ({ children }) => {
         return updated;
       }
 
-      // If it doesn't exist, add it as a new item
+      // If it doesn't exist, add it as a new item.
+      // Snapshoteamos `incluyeFritas` del producto vivo — el order final lo
+      // persiste así para que la comanda futura no dependa del estado actual
+      // del producto (si el admin cambia el flag, los pedidos viejos siguen
+      // imprimiendo lo que el cliente realmente pidió).
+      // Compat: si el producto todavía no tiene el campo (pre-migración),
+      // asumimos que las hamburguesas llevan fritas y los nuggets no.
+      const hasMed = product.hasMedallions !== false;
+      const incluyeFritas =
+        typeof product.incluyeFritas === 'boolean' ? product.incluyeFritas : hasMed;
       return [...prev, {
         productId: product.id,
         productName: product.name,
         productImage: product.image,
         price: product.price,
-        hasMedallions: product.hasMedallions !== false,
+        hasMedallions: hasMed,
+        incluyeFritas,
         pattyCount,
         quantity
       }];

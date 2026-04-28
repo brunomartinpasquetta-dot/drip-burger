@@ -22,7 +22,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Plus, Pencil, Trash2, Send, ChefHat, CheckCircle2, Banknote, MapPin, Phone, Clock, ArrowLeft, XCircle, Wallet, DollarSign, Loader2, Minus, TrendingUp, TrendingDown, BarChart3, Settings, Utensils, Printer } from 'lucide-react';
+import { Plus, Pencil, Trash2, Send, ChefHat, CheckCircle2, Banknote, MapPin, Phone, Clock, ArrowLeft, XCircle, Wallet, DollarSign, Loader2, Minus, TrendingUp, TrendingDown, BarChart3, Settings, Utensils, Printer, GripVertical, ChevronUp, ChevronDown } from 'lucide-react';
 import { SettingsContent } from './SettingsPage.jsx';
 import { ReportsContent } from './SalesReportingPage.jsx';
 import MenuPreviewContent from './admin/MenuPreviewContent.jsx';
@@ -64,16 +64,23 @@ const aggregateItems = (orderList) => {
       productMap[name].total += item.quantity;
       productMap[name].byPatty[item.pattyCount] =
         (productMap[name].byPatty[item.pattyCount] || 0) + item.quantity;
-      if (BURGER_NAMES.includes(name)) papasTotal += item.quantity;
+      if (itemHasFritas(item)) papasTotal += item.quantity;
     });
   });
   return { productMap, papasTotal };
 };
 
-// Calcula cantidad de papas fritas de un pedido (1 por burger, 0 por nuggets)
+// Snapshot del item: lee `incluyeFritas` persistido. Compat retro: si el order
+// es viejo y no trae el campo, asumimos hamburguesa = lleva fritas.
+const itemHasFritas = (item) =>
+  typeof item?.incluyeFritas === 'boolean'
+    ? item.incluyeFritas
+    : item?.hasMedallions !== false;
+
+// Calcula cantidad de papas fritas de un pedido sumando el snapshot de cada item.
 const orderPapasCount = (order) =>
   (order.items || []).reduce((sum, item) =>
-    BURGER_NAMES.includes(item.productName) ? sum + item.quantity : sum, 0);
+    itemHasFritas(item) ? sum + (item.quantity || 0) : sum, 0);
 
 // Clasifica urgencia del pedido según horario de entrega vs hora actual
 const getOrderUrgency = (order) => {
@@ -1178,6 +1185,8 @@ const AdminDashboard = () => {
   const [jornadaActiva, setJornadaActiva] = useState(null);
   const [jornadaLoading, setJornadaLoading] = useState(true);
   const [printBusy, setPrintBusy] = useState(false);
+  const [draggedProductId, setDraggedProductId] = useState(null);
+  const [dropTargetId, setDropTargetId] = useState(null);
   const navigate = useNavigate();
 
   const handlePrintTicket = async (order) => {
@@ -1281,7 +1290,7 @@ const AdminDashboard = () => {
   const loadData = async () => {
     try {
       const [productsData, customersData, ordersData] = await Promise.all([
-        pb.collection('products').getFullList({ sort: 'name', requestKey: null }),
+        pb.collection('products').getFullList({ sort: 'orden,created', requestKey: null }),
         pb.collection('users').getFullList({ filter: 'role = "CUSTOMER"', sort: 'name', requestKey: null }),
         pb.collection('orders').getFullList({ sort: '-created', requestKey: null })
       ]);
@@ -1319,6 +1328,47 @@ const AdminDashboard = () => {
     } finally {
       markPending(key, false);
     }
+  };
+
+  // ── Reordenamiento de productos (drag & drop / botones ↑↓) ──────
+  // Persiste en PB renumerando orden = 10, 20, 30... según el array nuevo.
+  // Optimista: actualizamos UI antes y revertimos si falla.
+  const persistProductOrder = async (newOrder) => {
+    const previous = products;
+    setProducts(newOrder);
+    try {
+      await Promise.all(
+        newOrder.map((p, i) =>
+          pb.collection('products').update(p.id, { orden: (i + 1) * 10 }, { requestKey: null })
+        )
+      );
+      toast.success('Orden guardado');
+    } catch (err) {
+      console.error('[productos] reorder failed:', err);
+      setProducts(previous);
+      toast.error('No se pudo guardar el orden, revertí los cambios');
+    }
+  };
+
+  const moveProduct = async (productId, delta) => {
+    const idx = products.findIndex((p) => p.id === productId);
+    if (idx < 0) return;
+    const target = idx + delta;
+    if (target < 0 || target >= products.length) return;
+    const next = [...products];
+    [next[idx], next[target]] = [next[target], next[idx]];
+    await persistProductOrder(next);
+  };
+
+  const reorderProductByDrag = async (sourceId, targetId) => {
+    if (!sourceId || !targetId || sourceId === targetId) return;
+    const next = [...products];
+    const sIdx = next.findIndex((p) => p.id === sourceId);
+    const tIdx = next.findIndex((p) => p.id === targetId);
+    if (sIdx < 0 || tIdx < 0) return;
+    const [moved] = next.splice(sIdx, 1);
+    next.splice(tIdx, 0, moved);
+    await persistProductOrder(next);
   };
 
   const handleDeleteCustomer = async (id) => {
@@ -1903,10 +1953,15 @@ const AdminDashboard = () => {
                 <div className="space-y-4">{[1, 2, 3].map(i => <Skeleton key={i} className="h-24 w-full rounded-xl" />)}</div>
               ) : (
                 <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+                  <p className="px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground border-b border-border bg-muted/10">
+                    <GripVertical className="inline w-3 h-3 mr-1 -mt-0.5" />
+                    Arrastrá para reordenar · en mobile usá los botones ↑↓
+                  </p>
                   <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse min-w-[700px]">
                       <thead>
                         <tr className="bg-muted/20 border-b border-border">
+                          <th className="p-2 text-xs font-bold uppercase tracking-wider text-muted-foreground w-10"></th>
                           <th className="p-4 text-xs font-bold uppercase tracking-wider text-muted-foreground">Foto</th>
                           <th className="p-4 text-xs font-bold uppercase tracking-wider text-muted-foreground">Producto</th>
                           <th className="p-4 text-xs font-bold uppercase tracking-wider text-muted-foreground">Precios</th>
@@ -1915,8 +1970,46 @@ const AdminDashboard = () => {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border">
-                        {products.map(product => (
-                          <tr key={product.id} className="hover:bg-muted/10 transition-colors">
+                        {products.map((product, idx) => (
+                          <tr
+                            key={product.id}
+                            draggable
+                            onDragStart={(e) => {
+                              setDraggedProductId(product.id);
+                              e.dataTransfer.effectAllowed = 'move';
+                              e.dataTransfer.setData('text/plain', product.id);
+                            }}
+                            onDragOver={(e) => {
+                              e.preventDefault();
+                              e.dataTransfer.dropEffect = 'move';
+                              if (dropTargetId !== product.id) setDropTargetId(product.id);
+                            }}
+                            onDragLeave={() => {
+                              if (dropTargetId === product.id) setDropTargetId(null);
+                            }}
+                            onDrop={(e) => {
+                              e.preventDefault();
+                              const sourceId = e.dataTransfer.getData('text/plain') || draggedProductId;
+                              setDraggedProductId(null);
+                              setDropTargetId(null);
+                              reorderProductByDrag(sourceId, product.id);
+                            }}
+                            onDragEnd={() => {
+                              setDraggedProductId(null);
+                              setDropTargetId(null);
+                            }}
+                            className={`hover:bg-muted/10 transition-colors ${
+                              draggedProductId === product.id ? 'opacity-50' : ''
+                            } ${
+                              dropTargetId === product.id && draggedProductId !== product.id
+                                ? 'border-l-4 border-l-primary bg-primary/5'
+                                : ''
+                            }`}
+                            style={{ cursor: draggedProductId === product.id ? 'grabbing' : 'grab' }}
+                          >
+                            <td className="p-2 text-center align-middle">
+                              <GripVertical className="inline w-4 h-4 text-muted-foreground/60" />
+                            </td>
                             <td className="p-4">
                               <div className="w-12 h-12 bg-background rounded-lg overflow-hidden border border-border flex items-center justify-center">
                                 {product.image
@@ -1928,6 +2021,9 @@ const AdminDashboard = () => {
                             <td className="p-4">
                               <p className="font-black uppercase text-sm">{product.name}</p>
                               <p className="text-xs text-muted-foreground mt-1 max-w-xs truncate">{product.description}</p>
+                              {(typeof product.incluyeFritas === 'boolean' ? product.incluyeFritas : product.hasMedallions) && (
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-primary/80 mt-1">+ papas fritas</p>
+                              )}
                               {product.internalNote && (
                                 <p className="text-xs text-yellow-500/70 mt-1">⚠ {product.internalNote}</p>
                               )}
@@ -1957,6 +2053,28 @@ const AdminDashboard = () => {
                             </td>
                             <td className="p-4">
                               <div className="flex items-center justify-center gap-2 flex-wrap">
+                                <div className="flex items-center gap-1 sm:hidden">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="border-border h-8 w-8 p-0"
+                                    onClick={() => moveProduct(product.id, -1)}
+                                    disabled={idx === 0}
+                                    title="Mover arriba"
+                                  >
+                                    <ChevronUp className="h-3 w-3" />
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="border-border h-8 w-8 p-0"
+                                    onClick={() => moveProduct(product.id, 1)}
+                                    disabled={idx === products.length - 1}
+                                    title="Mover abajo"
+                                  >
+                                    <ChevronDown className="h-3 w-3" />
+                                  </Button>
+                                </div>
                                 <ImageUploadButton product={product} onUploadSuccess={loadData} />
                                 <Button variant="outline" size="sm" className="border-border h-8"
                                   onClick={() => { setSelectedProduct(product); setProductFormOpen(true); }}>
