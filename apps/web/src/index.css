@@ -146,7 +146,8 @@ body.printing #print-area { display: block; }
     color: #000 !important;
     background: #fff !important;
     font-family: 'Courier New', Courier, monospace !important;
-    font-size: 12px;
+    /* Tamaños +20% sobre la spec de blackmanweb (12px base) */
+    font-size: 15px;
     line-height: 1.3;
     letter-spacing: 0;
   }
@@ -165,28 +166,27 @@ body.printing #print-area { display: block; }
   #print-area .ticket-bold { font-weight: 700; }
   /* CENTER */
   #print-area .ticket-center { text-align: center; }
-  /* DOUBLE_HEIGHT — sub-headers (cliente, TOTAL) */
+  /* DOUBLE_HEIGHT — sub-headers (cliente, TOTAL) — 14 × 1.2 ≈ 17px */
   #print-area .ticket-double-height {
-    font-size: 14px;
+    font-size: 17px;
     font-weight: 700;
     line-height: 1.2;
     margin: 2mm 0 1mm;
   }
-  /* DOUBLE_SIZE — h1: brand, dirección, COBRAR. Equivalente a `.ticket h1`
-     del módulo thermal-print (16px center). */
+  /* DOUBLE_SIZE — h1: brand, dirección, COBRAR — 16 × 1.2 ≈ 19px */
   #print-area .ticket-double {
-    font-size: 16px;
+    font-size: 19px;
     font-weight: 900;
     text-align: center;
     line-height: 1.15;
     margin: 2mm 0;
   }
-  /* Separadores literales: 32 chars en monospace (=, -, *) — a 12px
-     ocupan ~190px, caben holgados en el ancho útil de 74mm. */
+  /* Separadores literales 32 chars — letter-spacing leve para que entren
+     a 15px sin overflow en los 74mm útiles. */
   #print-area .ticket-sep {
     font-family: 'Courier New', Courier, monospace !important;
-    font-size: 12px;
-    letter-spacing: 0;
+    font-size: 14px;
+    letter-spacing: -0.3px;
     overflow: hidden;
     white-space: nowrap;
     line-height: 1;
