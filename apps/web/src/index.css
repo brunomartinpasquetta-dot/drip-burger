@@ -146,10 +146,11 @@ body.printing #print-area { display: block; }
     color: #000 !important;
     background: #fff !important;
     font-family: 'Courier New', Courier, monospace !important;
-    /* Tamaños +20% sobre la spec de blackmanweb (12px base) */
-    font-size: 15px;
+    /* Tamaños grandes para legibilidad real en 80mm térmico */
+    font-size: 18px;
     line-height: 1.3;
     letter-spacing: 0;
+    font-weight: 600;
   }
   #print-area * {
     color: #000 !important;
@@ -166,27 +167,27 @@ body.printing #print-area { display: block; }
   #print-area .ticket-bold { font-weight: 700; }
   /* CENTER */
   #print-area .ticket-center { text-align: center; }
-  /* DOUBLE_HEIGHT — sub-headers (cliente, TOTAL) — 14 × 1.2 ≈ 17px */
+  /* DOUBLE_HEIGHT — sub-headers (cliente, TOTAL) */
   #print-area .ticket-double-height {
-    font-size: 17px;
+    font-size: 26px;
     font-weight: 700;
     line-height: 1.2;
     margin: 2mm 0 1mm;
   }
-  /* DOUBLE_SIZE — h1: brand, dirección, COBRAR — 16 × 1.2 ≈ 19px */
+  /* DOUBLE_SIZE — brand, dirección, COBRAR (lo más grande del ticket) */
   #print-area .ticket-double {
-    font-size: 19px;
+    font-size: 34px;
     font-weight: 900;
     text-align: center;
-    line-height: 1.15;
-    margin: 2mm 0;
+    line-height: 1.1;
+    margin: 3mm 0;
   }
-  /* Separadores literales 32 chars — letter-spacing leve para que entren
-     a 15px sin overflow en los 74mm útiles. */
+  /* Separadores 32 chars — quedan chicos a propósito para que crucen el
+     ancho sin overflow mientras el texto del ticket queda grande. */
   #print-area .ticket-sep {
     font-family: 'Courier New', Courier, monospace !important;
     font-size: 14px;
-    letter-spacing: -0.3px;
+    letter-spacing: -0.5px;
     overflow: hidden;
     white-space: nowrap;
     line-height: 1;
