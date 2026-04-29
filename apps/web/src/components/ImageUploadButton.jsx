@@ -11,7 +11,7 @@ const ImageUploadButton = ({ product, onUploadSuccess }) => {
   const fileInputRef = useRef(null);
 
   const imageUrl = product?.image && !imgError
-    ? pb.files.getUrl(product, product.image)
+    ? pb.files.getURL(product, product.image)
     : null;
 
   const handleFileChange = async (e) => {

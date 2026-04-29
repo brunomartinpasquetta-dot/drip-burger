@@ -317,7 +317,7 @@ const OperacionCard = () => {
 // ══════════════════════════════════════════════════════════════════
 //  Impresora — usa el sistema de impresión del SO (window.print()).
 //  Compatible con cualquier impresora instalada (térmica 80mm, A4,
-//  red, WiFi). No requiere drivers especiales ni WebUSB.
+//  red, WiFi). No requiere drivers especiales en el navegador.
 // ══════════════════════════════════════════════════════════════════
 const PrinterCard = () => {
   const [busy, setBusy] = useState(false);

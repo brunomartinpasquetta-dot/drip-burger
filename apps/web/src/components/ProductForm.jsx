@@ -48,7 +48,7 @@ const ProductForm = ({ product, open, onOpenChange, onSuccess }) => {
         internalNote: product.internalNote || ''
       });
       if (product.image) {
-        setImagePreview(pb.files.getUrl(product, product.image));
+        setImagePreview(pb.files.getURL(product, product.image));
       } else {
         setImagePreview(null);
       }

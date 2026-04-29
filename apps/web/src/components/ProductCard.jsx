@@ -32,7 +32,7 @@ const ProductCard = ({ product }) => {
   const maxPatty = quintuplePrice > 0 ? 5 : quadruplePrice > 0 ? 4 : 3;
 
   const imageUrl = safeProduct.image && !imgError
-    ? pb.files.getUrl(safeProduct, safeProduct.image)
+    ? pb.files.getURL(safeProduct, safeProduct.image)
     : null;
 
   const currentPrice = hasMedallions

@@ -1983,7 +1983,7 @@ const AdminDashboard = () => {
                             <td className="p-4">
                               <div className="w-12 h-12 bg-background rounded-lg overflow-hidden border border-border flex items-center justify-center">
                                 {product.image
-                                  ? <img src={pb.files.getUrl(product, product.image)} alt={product.name} className="w-full h-full object-cover" />
+                                  ? <img src={pb.files.getURL(product, product.image)} alt={product.name} className="w-full h-full object-cover" />
                                   : <span className="text-muted-foreground/30 text-xl">🍔</span>
                                 }
                               </div>

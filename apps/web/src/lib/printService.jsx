@@ -1,6 +1,6 @@
 // Servicio de impresión multiplataforma — usa window.print() del navegador
 // y el driver del sistema operativo. Compatible con cualquier impresora
-// (térmica 80mm, A4, red, WiFi). Sin WebUSB, sin drivers especiales.
+// (térmica 80mm, A4, red, WiFi). Sin drivers especiales del navegador.
 //
 // Flujo:
 //   1) Mount del componente React correspondiente en #print-area (ReactDOM root)
