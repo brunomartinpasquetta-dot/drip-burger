@@ -348,8 +348,52 @@ const PrinterCard = () => {
           Las impresiones usan el <span className="text-foreground font-black">sistema de impresión de la computadora</span>.
           Configurá la impresora térmica como <span className="text-foreground font-black">predeterminada</span> en
           Windows o macOS, y activá <span className="text-foreground font-black">"corte automático"</span> en sus propiedades.
-          Compatible con cualquier impresora 80mm, A4, USB, red o WiFi.
         </p>
+      </div>
+
+      {/* ── AVISO MODO KIOSKO — primero, bien visible ──────────────────── */}
+      <div className="px-4 pb-3">
+        <div className="bg-primary/10 border-2 border-primary/60 rounded-md p-3">
+          <p className="text-sm font-black uppercase tracking-wide text-primary mb-2 flex items-center gap-1.5">
+            <AlertCircle className="w-4 h-4" />
+            Para imprimir SIN vista previa
+          </p>
+          <p className="text-xs text-foreground font-medium mb-2 leading-relaxed">
+            Chrome muestra siempre la ventana de vista previa de impresión, salvo
+            que lo abras con la flag <code className="px-1 py-0.5 rounded bg-card border border-border text-foreground font-mono text-[11px]">--kiosk-printing</code>.
+            Configurá una sola vez el acceso directo de Chrome y nunca más vas a
+            ver el diálogo:
+          </p>
+          <ol className="text-xs text-foreground font-medium space-y-1.5 pl-5 list-decimal">
+            <li>Cerrá Chrome.</li>
+            <li>
+              Click derecho en el acceso directo de Chrome →{' '}
+              <span className="font-black">Propiedades</span>.
+            </li>
+            <li>
+              En el campo <span className="font-black">"Destino"</span>,
+              al final, agregá un espacio y luego{' '}
+              <code className="px-1.5 py-0.5 rounded bg-card border border-border font-mono text-[11px]">
+                --kiosk-printing
+              </code>
+            </li>
+            <li>
+              <span className="font-black">Ejemplo final del campo Destino:</span>
+              <pre className="mt-1 px-2 py-1.5 rounded bg-card border border-border font-mono text-[10px] whitespace-pre-wrap break-all">
+{`"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" --kiosk-printing`}
+              </pre>
+            </li>
+            <li>Aceptar y abrir Chrome desde ese acceso directo.</li>
+            <li>
+              En Windows: Panel de Control → Dispositivos e impresoras → click derecho
+              en la térmica → <span className="font-black">"Establecer como impresora predeterminada"</span>.
+            </li>
+          </ol>
+          <p className="text-[11px] text-foreground/80 font-bold mt-3 leading-relaxed border-t border-primary/30 pt-2">
+            ✓ Listo: a partir de ahora cada impresión desde dripburger.shop sale
+            directo a la térmica, sin diálogo, sin clicks.
+          </p>
+        </div>
       </div>
 
       <div className="px-4 py-3 border-t border-border">
@@ -363,55 +407,10 @@ const PrinterCard = () => {
             ? <Loader2 className="h-4 w-4 animate-spin" />
             : <><Send className="mr-1 h-4 w-4" />Imprimir prueba</>}
         </Button>
-      </div>
-
-      <div className="px-4 py-3 border-t border-border">
-        <p className="text-[10px] text-muted-foreground font-medium leading-relaxed">
-          Tip: en el diálogo de impresión, elegí "POS 80mm" o "Roll Paper" como tamaño,
-          desactivá márgenes y encabezados, y guardá esa configuración como preset.
+        <p className="text-[10px] text-muted-foreground font-medium leading-relaxed mt-2 text-center">
+          Si Chrome NO está en modo kiosko vas a ver primero la vista previa.
+          Aceptá una vez para validar el formato.
         </p>
-      </div>
-
-      {/* ── Guía modo kiosko (sin vista previa) ─────────────────── */}
-      <div className="px-4 py-3 border-t border-border">
-        <div className="bg-background border border-border border-l-[4px] border-l-primary rounded-md p-3">
-          <p className="text-xs font-black uppercase tracking-wide text-primary mb-2">
-            Impresión sin vista previa (modo kiosko)
-          </p>
-          <p className="text-xs text-muted-foreground font-medium mb-2">
-            Para que el ticket salga directo a la impresora sin abrir la ventana
-            de vista previa cada vez:
-          </p>
-          <ol className="text-xs text-muted-foreground font-medium space-y-1.5 pl-4 list-decimal">
-            <li>Cerrá Chrome.</li>
-            <li>
-              Click derecho en el acceso directo de Chrome →{' '}
-              <span className="text-foreground font-bold">Propiedades</span>.
-            </li>
-            <li>
-              En el campo <span className="text-foreground font-bold">"Destino"</span>,
-              al final, agregá un espacio y luego:{' '}
-              <code className="px-1.5 py-0.5 rounded bg-card border border-border text-foreground font-mono text-[11px]">
-                --kiosk-printing
-              </code>
-            </li>
-            <li>
-              Ejemplo final:
-              <pre className="mt-1 px-2 py-1.5 rounded bg-card border border-border text-foreground font-mono text-[10px] whitespace-pre-wrap break-all">
-{`"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" --kiosk-printing`}
-              </pre>
-            </li>
-            <li>Aceptar y abrir Chrome desde ese acceso directo.</li>
-            <li>
-              Configurá la impresora térmica como{' '}
-              <span className="text-foreground font-bold">predeterminada</span> en Windows.
-            </li>
-          </ol>
-          <p className="text-[10px] text-muted-foreground/80 font-medium mt-2 leading-relaxed">
-            Listo: a partir de ahora, cualquier impresión desde dripburger.shop sale
-            automáticamente sin pedir confirmación.
-          </p>
-        </div>
       </div>
     </div>
   );
