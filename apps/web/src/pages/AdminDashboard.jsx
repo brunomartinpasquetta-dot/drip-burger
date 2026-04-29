@@ -27,11 +27,9 @@ import { SettingsContent } from './SettingsPage.jsx';
 import { ReportsContent } from './SalesReportingPage.jsx';
 import MenuPreviewContent from './admin/MenuPreviewContent.jsx';
 import {
-  connectPrinter,
-  isPrinterConnected,
-  printDeliveryTicket,
+  printTicketDelivery,
   printKitchenOrder,
-} from '@/lib/escposPrinter.js';
+} from '@/lib/printService.jsx';
 import { toast } from 'sonner';
 
 const formatPrice = (price) => {
@@ -107,19 +105,7 @@ const KitchenView = ({ orders, onSendToKitchen, onMarkReady, isPending }) => {
   const [selectedSlot, setSelectedSlot] = useState('all');
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [showAggregated, setShowAggregated] = useState(false);
-  const [printerConnected, setPrinterConnected] = useState(() => isPrinterConnected());
   const [printBusy, setPrintBusy] = useState(false);
-
-  const handleConnectPrinter = async () => {
-    try {
-      await connectPrinter();
-      setPrinterConnected(true);
-      toast.success('Impresora conectada');
-    } catch (err) {
-      setPrinterConnected(false);
-      toast.error('No se pudo conectar: ' + (err.message || err));
-    }
-  };
 
   const handlePrintKitchenOrder = async () => {
     if (printBusy) return;
@@ -134,12 +120,10 @@ const KitchenView = ({ orders, onSendToKitchen, onMarkReady, isPending }) => {
       return;
     }
     setPrintBusy(true);
+    toast('Abriendo diálogo de impresión...');
     try {
       await printKitchenOrder(pending, selectedSlot === 'all' ? 'TODOS' : selectedSlot);
-      setPrinterConnected(true);
-      toast.success(`Comanda impresa (${pending.length} pedidos)`);
     } catch (err) {
-      setPrinterConnected(isPrinterConnected());
       toast.error('Error al imprimir: ' + (err.message || err));
     } finally {
       setPrintBusy(false);
@@ -230,15 +214,13 @@ const KitchenView = ({ orders, onSendToKitchen, onMarkReady, isPending }) => {
     await onSendToKitchen(idsToSend);
     if (alsoPrint && ordersToSend.length > 0) {
       setPrintBusy(true);
+      toast('Abriendo diálogo de impresión...');
       try {
         await printKitchenOrder(
           ordersToSend,
           selectedSlot === 'all' ? 'TODOS' : selectedSlot
         );
-        setPrinterConnected(true);
-        toast.success(`Comanda impresa (${ordersToSend.length} pedidos)`);
       } catch (err) {
-        setPrinterConnected(isPrinterConnected());
         toast.error('Error al imprimir: ' + (err.message || err));
       } finally {
         setPrintBusy(false);
@@ -249,12 +231,10 @@ const KitchenView = ({ orders, onSendToKitchen, onMarkReady, isPending }) => {
   const handlePrintSingleCooking = async (order) => {
     if (printBusy) return;
     setPrintBusy(true);
+    toast('Abriendo diálogo de impresión...');
     try {
       await printKitchenOrder([order], order.deliveryTimeSlot || 'TODOS');
-      setPrinterConnected(true);
-      toast.success('Comanda reimpresa');
     } catch (err) {
-      setPrinterConnected(isPrinterConnected());
       toast.error('Error al imprimir: ' + (err.message || err));
     } finally {
       setPrintBusy(false);
@@ -280,19 +260,8 @@ const KitchenView = ({ orders, onSendToKitchen, onMarkReady, isPending }) => {
 
   return (
     <div className="space-y-4 pb-20">
-      {/* Barra de impresora — conectar + comanda cocina */}
+      {/* Imprimir comanda — usa el sistema de impresión del SO */}
       <div className="flex items-center gap-2 flex-wrap">
-        <button
-          onClick={handleConnectPrinter}
-          className={`px-3 h-9 rounded-lg text-xs font-black uppercase tracking-wide border-2 transition-all inline-flex items-center gap-1.5 ${
-            printerConnected
-              ? 'bg-green-500/15 border-green-500/50 text-green-400'
-              : 'bg-card border-border text-muted-foreground hover:border-primary/50'
-          }`}
-        >
-          <Printer className="w-3.5 h-3.5" />
-          {printerConnected ? 'Impresora conectada ✓' : 'Conectar impresora'}
-        </button>
         <Button
           onClick={handlePrintKitchenOrder}
           type="button"
@@ -1192,8 +1161,9 @@ const AdminDashboard = () => {
   const handlePrintTicket = async (order) => {
     if (printBusy) return;
     setPrintBusy(true);
+    toast('Abriendo diálogo de impresión...');
     try {
-      await printDeliveryTicket(order);
+      await printTicketDelivery(order);
     } catch (err) {
       toast.error('Error al imprimir: ' + (err.message || err));
     } finally {

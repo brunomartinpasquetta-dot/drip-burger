@@ -33,13 +33,7 @@ import {
 } from '@/lib/integrationsClient';
 import { computeIsOpen } from '@/hooks/useStoreHours';
 import { useAuth } from '@/contexts/AuthContext.jsx';
-import {
-  connectPrinter,
-  disconnectPrinter,
-  isPrinterConnected,
-  getPrinterInfo,
-  printTestTicket,
-} from '@/lib/escposPrinter.js';
+import { printTestTicket } from '@/lib/printService.jsx';
 
 const formatShippingPreview = (price) => {
   const num = Number(price) || 0;
@@ -321,210 +315,60 @@ const OperacionCard = () => {
 };
 
 // ══════════════════════════════════════════════════════════════════
-//  Impresora térmica (WebUSB / ESC/POS)
-//  Estados: never (amarillo) / connected (verde) / disconnected (rojo)
+//  Impresora — usa el sistema de impresión del SO (window.print()).
+//  Compatible con cualquier impresora instalada (térmica 80mm, A4,
+//  red, WiFi). No requiere drivers especiales ni WebUSB.
 // ══════════════════════════════════════════════════════════════════
 const PrinterCard = () => {
-  // Status: 'never' | 'connected' | 'disconnected' | 'error'
-  const [status, setStatus] = useState(() =>
-    isPrinterConnected() ? 'connected' : (typeof window !== 'undefined' && localStorage.getItem('drip_printer_seen') ? 'disconnected' : 'never')
-  );
-  const [info, setInfo] = useState(() => getPrinterInfo());
-  const [busy, setBusy] = useState(null); // 'connect' | 'fallback' | 'test' | 'disconnect'
-  const [zadigHint, setZadigHint] = useState(false);
-
-  const refresh = useCallback(() => {
-    if (isPrinterConnected()) {
-      setStatus('connected');
-      setInfo(getPrinterInfo());
-    }
-  }, []);
-
-  useEffect(() => {
-    refresh();
-    // Re-check cada 3s — el listener de disconnect del módulo limpia la caché,
-    // y el polling lo refleja en la UI.
-    const id = setInterval(refresh, 3000);
-    return () => clearInterval(id);
-  }, [refresh]);
-
-  const doConnect = async (fallback) => {
-    const action = fallback ? 'fallback' : 'connect';
-    setBusy(action);
-    setZadigHint(false);
-    try {
-      await connectPrinter({ fallback });
-      setStatus('connected');
-      setInfo(getPrinterInfo());
-      try { localStorage.setItem('drip_printer_seen', '1'); } catch (e) { /* noop */ }
-      toast.success('Impresora conectada');
-    } catch (err) {
-      setStatus('error');
-      const msg = err?.message || String(err);
-      toast.error(msg);
-      if (msg.toLowerCase().includes('zadig') || msg.toLowerCase().includes('windows')) {
-        setZadigHint(true);
-      }
-    } finally {
-      setBusy(null);
-    }
-  };
+  const [busy, setBusy] = useState(false);
 
   const doTest = async () => {
-    setBusy('test');
+    setBusy(true);
+    toast('Abriendo diálogo de impresión...');
     try {
       await printTestTicket();
-      setStatus('connected');
-      setInfo(getPrinterInfo());
-      toast.success('Test enviado a la impresora');
     } catch (err) {
-      setStatus('error');
-      toast.error(err?.message || String(err));
+      toast.error('Error al imprimir: ' + (err?.message || err));
     } finally {
-      setBusy(null);
+      setBusy(false);
     }
   };
-
-  const doDisconnect = async () => {
-    setBusy('disconnect');
-    try {
-      await disconnectPrinter();
-      setStatus('disconnected');
-      setInfo(null);
-      toast.success('Impresora desvinculada');
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const borderCls = {
-    connected: 'border-l-green-500',
-    disconnected: 'border-l-red-500',
-    error: 'border-l-red-500',
-    never: 'border-l-yellow-500',
-  }[status] || 'border-l-yellow-500';
-
-  const dotCls = {
-    connected: 'text-green-500',
-    disconnected: 'text-red-500',
-    error: 'text-red-500',
-    never: 'text-yellow-500',
-  }[status] || 'text-yellow-500';
-
-  const statusLabel = {
-    connected: 'Conectada',
-    disconnected: 'Desconectada',
-    error: 'Error',
-    never: 'Nunca conectada',
-  }[status] || 'Desconocido';
 
   return (
-    <div className={`bg-card border border-border border-l-[6px] ${borderCls} rounded-lg overflow-hidden shadow-sm`}>
-      {/* Row 1: título + estado */}
+    <div className="bg-card border border-border border-l-[6px] border-l-primary rounded-lg overflow-hidden shadow-sm">
       <div className="flex items-center justify-between gap-3 p-4 pb-3">
         <div className="flex items-center gap-2 min-w-0">
           <Printer className="w-5 h-5 text-primary shrink-0" />
-          <h3 className="text-lg sm:text-xl font-black uppercase tracking-tight">Impresora térmica</h3>
-        </div>
-        <span className={`inline-flex items-center gap-1.5 text-xs font-black uppercase tracking-wide ${dotCls}`}>
-          <span className="text-[10px]">●</span>
-          {statusLabel}
-        </span>
-      </div>
-
-      {/* Info del dispositivo */}
-      {info && (
-        <div className="px-4 pb-3">
-          <div className="bg-background border border-border rounded px-3 py-2 text-[11px] font-mono text-muted-foreground space-y-0.5">
-            {info.manufacturerName && <div><span className="text-foreground font-bold">Fabricante:</span> {info.manufacturerName}</div>}
-            {info.productName && <div><span className="text-foreground font-bold">Modelo:</span> {info.productName}</div>}
-            <div>
-              <span className="text-foreground font-bold">VID/PID:</span>{' '}
-              {`0x${info.vendorId?.toString(16).padStart(4, '0')} / 0x${info.productId?.toString(16).padStart(4, '0')}`}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Row: acciones */}
-      <div className="px-4 py-3 border-t border-border space-y-2">
-        <div className="flex flex-col sm:flex-row gap-2">
-          <Button
-            onClick={() => doConnect(false)}
-            disabled={busy !== null}
-            size="sm"
-            className="btn-primary flex-1 h-10 text-xs font-black uppercase tracking-wide shadow-sm"
-          >
-            {busy === 'connect'
-              ? <Loader2 className="h-4 w-4 animate-spin" />
-              : <><Printer className="mr-1 h-4 w-4" />Conectar impresora</>}
-          </Button>
-          <Button
-            onClick={doTest}
-            disabled={busy !== null || status !== 'connected'}
-            size="sm"
-            variant="outline"
-            className="flex-1 h-10 border-border bg-transparent hover:bg-muted text-foreground text-xs font-black uppercase tracking-wide"
-          >
-            {busy === 'test'
-              ? <Loader2 className="h-4 w-4 animate-spin" />
-              : <><Send className="mr-1 h-4 w-4" />Imprimir test</>}
-          </Button>
-        </div>
-        <div className="flex flex-col sm:flex-row gap-2">
-          <Button
-            onClick={() => doConnect(true)}
-            disabled={busy !== null}
-            size="sm"
-            variant="outline"
-            className="flex-1 h-10 border-border bg-transparent hover:bg-muted text-muted-foreground text-[10px] font-black uppercase tracking-wider"
-          >
-            {busy === 'fallback'
-              ? <Loader2 className="h-4 w-4 animate-spin" />
-              : 'Modo fallback (mostrar todos los USB)'}
-          </Button>
-          {status === 'connected' && (
-            <Button
-              onClick={doDisconnect}
-              disabled={busy !== null}
-              size="sm"
-              variant="outline"
-              className="h-10 px-3 border-red-500/50 text-red-400 hover:bg-red-500/10 text-[10px] font-black uppercase tracking-wider"
-            >
-              {busy === 'disconnect'
-                ? <Loader2 className="h-4 w-4 animate-spin" />
-                : <><Power className="mr-1 h-4 w-4" />Desvincular</>}
-            </Button>
-          )}
+          <h3 className="text-lg sm:text-xl font-black uppercase tracking-tight">Impresora</h3>
         </div>
       </div>
 
-      {/* Hint de Zadig si fallo por driver */}
-      {zadigHint && (
-        <div className="px-4 py-3 border-t border-border bg-red-500/5">
-          <div className="flex items-start gap-2 text-[11px] text-red-400">
-            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-            <p className="font-bold leading-relaxed">
-              Windows está usando un driver propio que bloquea WebUSB. Hay que reemplazarlo por <span className="font-black uppercase">WinUSB</span> usando{' '}
-              <a
-                href="https://zadig.akeo.ie/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline font-black inline-flex items-center gap-0.5 hover:text-red-300"
-              >
-                Zadig <ExternalLink className="w-3 h-3" />
-              </a>
-              {' '}— elegir la Hassar en la lista, "WinUSB" como driver, "Replace Driver". Después volvé a Conectar.
-            </p>
-          </div>
-        </div>
-      )}
+      <div className="px-4 pb-3">
+        <p className="text-xs text-muted-foreground font-medium leading-relaxed">
+          Las impresiones usan el <span className="text-foreground font-black">sistema de impresión de la computadora</span>.
+          Configurá la impresora térmica como <span className="text-foreground font-black">predeterminada</span> en
+          Windows o macOS, y activá <span className="text-foreground font-black">"corte automático"</span> en sus propiedades.
+          Compatible con cualquier impresora 80mm, A4, USB, red o WiFi.
+        </p>
+      </div>
 
-      {/* Help text general */}
+      <div className="px-4 py-3 border-t border-border">
+        <Button
+          onClick={doTest}
+          disabled={busy}
+          size="sm"
+          className="btn-primary w-full h-10 text-xs font-black uppercase tracking-wide shadow-sm"
+        >
+          {busy
+            ? <Loader2 className="h-4 w-4 animate-spin" />
+            : <><Send className="mr-1 h-4 w-4" />Imprimir prueba</>}
+        </Button>
+      </div>
+
       <div className="px-4 py-3 border-t border-border">
         <p className="text-[10px] text-muted-foreground font-medium leading-relaxed">
-          Sólo Chrome / Edge en desktop. La primera vez te pide elegir la impresora; después queda autorizada por sesión del navegador.
-          Si la Hassar no aparece en la lista, probá con <span className="text-foreground font-black">Modo fallback</span>.
+          Tip: en el diálogo de impresión, elegí "POS 80mm" o "Roll Paper" como tamaño,
+          desactivá márgenes y encabezados, y guardá esa configuración como preset.
         </p>
       </div>
     </div>
