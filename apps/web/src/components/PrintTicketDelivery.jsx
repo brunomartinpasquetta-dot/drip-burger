@@ -1,30 +1,33 @@
 import React from 'react';
-import { MEDALLION_LABELS, FORMA_PAGO, PAYMENT_STATUS } from '@/lib/orderConstants';
+import { FORMA_PAGO, PAYMENT_STATUS } from '@/lib/orderConstants';
+
+// ──────────────────────────────────────────────────────────────────
+// PrintTicketDelivery — replica 1:1 el layout de escposPrinter.js.legacy
+// (printDeliveryTicket). Mismo orden de secciones, mismas líneas
+// separadoras (32 chars literales), mismas jerarquías de tamaño.
+//
+// Mapping ESC/POS → CSS:
+//   NORMAL_SIZE        → base (.ticket-base 12px)
+//   BOLD_ON            → .ticket-bold (font-weight 700)
+//   DOUBLE_HEIGHT      → .ticket-double-height (~18px bold)
+//   DOUBLE_SIZE        → .ticket-double (~22px bold black, doble alto+ancho)
+//   CENTER             → .ticket-center (text-align center)
+//   LEFT               → default
+//   separator('=', 32) → 32 caracteres "=" literales
+//   separator('-', 32) → 32 caracteres "-" literales
+//   separator('*', 32) → 32 caracteres "*" literales
+//   line('')           → <br/> (line feed)
+//   FEED_3             → .ticket-spacer (margin-bottom)
+//   lineWithPrice      → .ticket-row (flex space-between)
+// ──────────────────────────────────────────────────────────────────
+
+const WIDTH = 32;
+const SEP_EQ = '='.repeat(WIDTH);
+const SEP_DASH = '-'.repeat(WIDTH);
+const SEP_STAR = '*'.repeat(WIDTH);
 
 const fmtPrice = (n) =>
-  new Intl.NumberFormat('es-AR', {
-    style: 'currency',
-    currency: 'ARS',
-    maximumFractionDigits: 0,
-  }).format(Math.round(Number(n) || 0));
-
-const formatDateTimeAr = (iso) => {
-  if (!iso) return '';
-  try {
-    const d = new Date(iso);
-    const ar = new Date(
-      d.getTime() + (-3 * 60 * 60 * 1000) - d.getTimezoneOffset() * 60 * 1000
-    );
-    const dd = String(ar.getDate()).padStart(2, '0');
-    const mm = String(ar.getMonth() + 1).padStart(2, '0');
-    const yyyy = ar.getFullYear();
-    const hh = String(ar.getHours()).padStart(2, '0');
-    const min = String(ar.getMinutes()).padStart(2, '0');
-    return `${dd}/${mm}/${yyyy} · ${hh}:${min}`;
-  } catch (e) {
-    return '';
-  }
-};
+  '$' + Math.round(Number(n) || 0).toLocaleString('es-AR');
 
 // Snapshot helper con compat retro: orders viejos no traen incluyeFritas.
 // Asumimos: hamburguesa (hasMedallions=true) → lleva fritas; nuggets → no.
@@ -33,10 +36,6 @@ const itemIncluyeFritas = (item) =>
     ? item.incluyeFritas
     : item?.hasMedallions !== false;
 
-/**
- * Ticket de delivery — formato 80mm. Render plano del DOM; las clases
- * `.ticket-*` y el id #print-area las maneja index.css en @media print.
- */
 const PrintTicketDelivery = ({ order }) => {
   if (!order) return null;
 
@@ -48,98 +47,109 @@ const PrintTicketDelivery = ({ order }) => {
   );
   const total = Number(order.totalAmount) || itemsTotal + shipping;
 
-  const paymentMethod = order.paymentMethod || order.forma_pago || '—';
+  const paymentMethod = order.paymentMethod || order.forma_pago || '';
   const isCash = paymentMethod === FORMA_PAGO.CASH;
+  const isTransfer = paymentMethod === FORMA_PAGO.TRANSFER;
   const isPaid = order.paymentStatus === PAYMENT_STATUS.PAID;
-
-  let estadoPago;
-  if (isCash && !isPaid) estadoPago = `COBRAR ${fmtPrice(total)} EN EFECTIVO`;
-  else if (isCash && isPaid) estadoPago = 'YA COBRADO · EFECTIVO';
-  else if (isPaid) estadoPago = 'PAGADO ONLINE';
-  else estadoPago = `PENDIENTE · ${paymentMethod.toUpperCase()}`;
 
   return (
     <>
-      <div className="ticket-center">
-        <h1>DRIP BURGER</h1>
+      {/* HEADER — DOUBLE_SIZE + BOLD + CENTER */}
+      <div className="ticket-center ticket-double">DRIP BURGER</div>
+      <div className="ticket-sep">{SEP_EQ}</div>
+
+      {/* META — BOLD número, normal entrega */}
+      <div className="ticket-bold">#{order.orderNumber || order.id}</div>
+      {order.deliveryTimeSlot && (
+        <div>Entrega: {order.deliveryTimeSlot}</div>
+      )}
+      <div className="ticket-sep">{SEP_EQ}</div>
+
+      {/* CLIENTE — DOUBLE_HEIGHT + BOLD nombre, BOLD tel */}
+      <div className="ticket-double-height">
+        {(order.customerName || '').toUpperCase()}
       </div>
-      <hr className="ticket-double" />
+      {order.customerPhone && (
+        <div className="ticket-bold">Tel: {order.customerPhone}</div>
+      )}
 
-      <div>
-        <div className="ticket-bold">PEDIDO #{order.orderNumber || order.id}</div>
-        <div>{formatDateTimeAr(order.created)}</div>
-        {order.deliveryTimeSlot && (
-          <div className="ticket-bold">ENTREGA: {order.deliveryTimeSlot}</div>
-        )}
+      {/* línea vacía + DIRECCIÓN doble tamaño */}
+      <br />
+      <div className="ticket-double">
+        {(order.customerAddress || '-').toUpperCase()}
       </div>
+      <div className="ticket-sep">{SEP_EQ}</div>
 
-      <hr className="ticket-line" />
+      {/* ITEMS — BOLD label + price right-aligned + "+ PAPAS FRITAS" indentado */}
+      {items.map((item, idx) => {
+        const qty = Number(item.quantity) || 1;
+        const hasPatty = item.hasMedallions !== false && item.pattyCount;
+        const pattyLabel = hasPatty ? ` x${item.pattyCount}med` : '';
+        const label = `${qty}x ${(item.productName || '').toUpperCase()}${pattyLabel}`;
+        const lineTotal = (Number(item.price) || 0) * qty;
+        return (
+          <div key={idx}>
+            <div className="ticket-row ticket-bold">
+              <span>{label}</span>
+              <span>{fmtPrice(lineTotal)}</span>
+            </div>
+            {itemIncluyeFritas(item) && (
+              <div>&nbsp;&nbsp;+ PAPAS FRITAS</div>
+            )}
+          </div>
+        );
+      })}
 
-      <div>
-        <div className="ticket-bold">CLIENTE: {(order.customerName || '—').toUpperCase()}</div>
-        {order.customerPhone && <div>TEL: {order.customerPhone}</div>}
-        <div className="ticket-bold" style={{ fontSize: '13px', marginTop: '2px' }}>
-          DIRECCION: {(order.customerAddress || '—').toUpperCase()}
-        </div>
-      </div>
-
-      <hr className="ticket-line" />
-
-      <div>
-        {items.length === 0 ? (
-          <div>Sin ítems</div>
-        ) : (
-          items.map((item, idx) => {
-            const qty = Number(item.quantity) || 1;
-            const hasPatty = item.hasMedallions !== false && item.pattyCount;
-            const pattyLabel = hasPatty
-              ? ` ${MEDALLION_LABELS[item.pattyCount] || `${item.pattyCount}p`}`.toUpperCase()
-              : '';
-            const lineTotal = (Number(item.price) || 0) * qty;
-            return (
-              <div key={idx} style={{ marginBottom: '2px' }}>
-                <div className="ticket-row">
-                  <span className="ticket-bold">
-                    {qty}x {(item.productName || '').toUpperCase()}{pattyLabel}
-                  </span>
-                  <span className="ticket-bold ticket-tabular">{fmtPrice(lineTotal)}</span>
-                </div>
-                {itemIncluyeFritas(item) && (
-                  <div style={{ paddingLeft: '8px' }}>+ papas fritas</div>
-                )}
-              </div>
-            );
-          })
-        )}
-      </div>
-
-      <hr className="ticket-line" />
-
+      <div className="ticket-sep">{SEP_DASH}</div>
       <div className="ticket-row">
         <span>Subtotal:</span>
-        <span className="ticket-tabular">{fmtPrice(itemsTotal)}</span>
+        <span>{fmtPrice(itemsTotal)}</span>
       </div>
       <div className="ticket-row">
-        <span>Envío:</span>
-        <span className="ticket-tabular">{fmtPrice(shipping)}</span>
+        <span>Envio:</span>
+        <span>{fmtPrice(shipping)}</span>
       </div>
-      <hr className="ticket-line" />
-      <div className="ticket-row">
-        <h2 style={{ margin: 0 }}>TOTAL:</h2>
-        <h2 style={{ margin: 0 }} className="ticket-tabular">{fmtPrice(total)}</h2>
+      <div className="ticket-sep">{SEP_DASH}</div>
+
+      {/* TOTAL — DOUBLE_HEIGHT + BOLD */}
+      <div className="ticket-row ticket-double-height">
+        <span>TOTAL:</span>
+        <span>{fmtPrice(total)}</span>
       </div>
 
-      <hr className="ticket-double" />
-
+      {/* ESTADO DE PAGO — frame con asteriscos + DOUBLE_SIZE centrado */}
+      <div className="ticket-sep">{SEP_STAR}</div>
       <div className="ticket-center">
-        <div className="ticket-bold" style={{ fontSize: '13px' }}>{estadoPago}</div>
+        {isCash && !isPaid && (
+          <>
+            <div className="ticket-double">COBRAR</div>
+            <div className="ticket-double">{fmtPrice(total)}</div>
+            <div className="ticket-double-height">EFECTIVO</div>
+          </>
+        )}
+        {isCash && isPaid && (
+          <>
+            <div className="ticket-double">YA COBRADO</div>
+            <div className="ticket-double-height">EFECTIVO</div>
+          </>
+        )}
+        {isTransfer && (
+          <>
+            <div className="ticket-double">PAGADO</div>
+            <div className="ticket-double-height">TRANSFERENCIA</div>
+          </>
+        )}
+        {!isCash && !isTransfer && (
+          <div className="ticket-double">
+            {isPaid ? 'PAGADO' : `COBRAR ${fmtPrice(total)}`}
+          </div>
+        )}
       </div>
+      <div className="ticket-sep">{SEP_STAR}</div>
 
-      <hr className="ticket-double" />
-
-      <div className="ticket-center" style={{ marginTop: '6px' }}>
-        ¡GRACIAS POR TU PEDIDO!
-      </div>
+      <br />
+      <div className="ticket-center">Gracias por tu pedido!</div>
+      <div className="ticket-spacer" />
     </>
   );
 };

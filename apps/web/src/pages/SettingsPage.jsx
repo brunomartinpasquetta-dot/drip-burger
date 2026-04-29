@@ -371,6 +371,48 @@ const PrinterCard = () => {
           desactivá márgenes y encabezados, y guardá esa configuración como preset.
         </p>
       </div>
+
+      {/* ── Guía modo kiosko (sin vista previa) ─────────────────── */}
+      <div className="px-4 py-3 border-t border-border">
+        <div className="bg-background border border-border border-l-[4px] border-l-primary rounded-md p-3">
+          <p className="text-xs font-black uppercase tracking-wide text-primary mb-2">
+            Impresión sin vista previa (modo kiosko)
+          </p>
+          <p className="text-xs text-muted-foreground font-medium mb-2">
+            Para que el ticket salga directo a la impresora sin abrir la ventana
+            de vista previa cada vez:
+          </p>
+          <ol className="text-xs text-muted-foreground font-medium space-y-1.5 pl-4 list-decimal">
+            <li>Cerrá Chrome.</li>
+            <li>
+              Click derecho en el acceso directo de Chrome →{' '}
+              <span className="text-foreground font-bold">Propiedades</span>.
+            </li>
+            <li>
+              En el campo <span className="text-foreground font-bold">"Destino"</span>,
+              al final, agregá un espacio y luego:{' '}
+              <code className="px-1.5 py-0.5 rounded bg-card border border-border text-foreground font-mono text-[11px]">
+                --kiosk-printing
+              </code>
+            </li>
+            <li>
+              Ejemplo final:
+              <pre className="mt-1 px-2 py-1.5 rounded bg-card border border-border text-foreground font-mono text-[10px] whitespace-pre-wrap break-all">
+{`"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" --kiosk-printing`}
+              </pre>
+            </li>
+            <li>Aceptar y abrir Chrome desde ese acceso directo.</li>
+            <li>
+              Configurá la impresora térmica como{' '}
+              <span className="text-foreground font-bold">predeterminada</span> en Windows.
+            </li>
+          </ol>
+          <p className="text-[10px] text-muted-foreground/80 font-medium mt-2 leading-relaxed">
+            Listo: a partir de ahora, cualquier impresión desde dripburger.shop sale
+            automáticamente sin pedir confirmación.
+          </p>
+        </div>
+      </div>
     </div>
   );
 };

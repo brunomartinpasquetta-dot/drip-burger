@@ -146,8 +146,9 @@ body.printing #print-area { display: block; }
     color: #000 !important;
     background: #fff !important;
     font-family: 'Courier New', Courier, monospace !important;
-    font-size: 11px;
-    line-height: 1.3;
+    font-size: 12px;
+    line-height: 1.25;
+    letter-spacing: 0;
   }
   #print-area * {
     color: #000 !important;
@@ -159,23 +160,42 @@ body.printing #print-area { display: block; }
     size: 80mm auto;
     margin: 3mm;
   }
-  /* Helpers visuales */
+  /* ── Clases que mapean los comandos ESC/POS del legacy ────────── */
+  /* BOLD_ON sólo (mismo tamaño que NORMAL_SIZE) */
   #print-area .ticket-bold { font-weight: 700; }
+  /* CENTER */
   #print-area .ticket-center { text-align: center; }
-  #print-area .ticket-line {
-    border: 0;
-    border-top: 1px dashed #000;
-    margin: 4px 0;
-    height: 0;
+  /* DOUBLE_HEIGHT (1× ancho, 2× alto) — bold por convención del legacy */
+  #print-area .ticket-double-height {
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1.15;
+    margin: 2px 0;
   }
+  /* DOUBLE_SIZE (2× ancho, 2× alto) bold black — header DRIP BURGER, dirección, COBRAR, etc. */
   #print-area .ticket-double {
-    border: 0;
-    border-top: 2px solid #000;
-    margin: 4px 0;
-    height: 0;
+    font-size: 22px;
+    font-weight: 900;
+    letter-spacing: 0.5px;
+    line-height: 1.1;
+    margin: 2px 0;
   }
-  #print-area h1 { font-size: 18px; margin: 4px 0; font-weight: 900; }
-  #print-area h2 { font-size: 14px; margin: 4px 0; font-weight: 900; }
-  #print-area .ticket-row { display: flex; justify-content: space-between; gap: 6px; }
-  #print-area .ticket-tabular { font-variant-numeric: tabular-nums; }
+  /* Separadores literales: 32 chars en monospace (=, -, *) */
+  #print-area .ticket-sep {
+    font-family: 'Courier New', Courier, monospace !important;
+    letter-spacing: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    line-height: 1;
+    margin: 3px 0;
+  }
+  /* lineWithPrice — label izq, precio der */
+  #print-area .ticket-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 6px;
+    font-variant-numeric: tabular-nums;
+  }
+  /* FEED_3 antes del corte */
+  #print-area .ticket-spacer { height: 12mm; }
 }
