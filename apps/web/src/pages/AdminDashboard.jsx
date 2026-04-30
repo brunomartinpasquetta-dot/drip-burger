@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Helmet } from 'react-helmet';
 import { Link, useNavigate } from 'react-router-dom';
 import pb from '@/lib/pocketbaseClient';
@@ -1168,7 +1168,51 @@ const AdminDashboard = () => {
   const [printBusy, setPrintBusy] = useState(false);
   const [draggedProductId, setDraggedProductId] = useState(null);
   const [dropTargetId, setDropTargetId] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const [alarmMuted, setAlarmMuted] = useState(() =>
+    typeof window !== 'undefined' && localStorage.getItem('drip_alarm_muted') === '1'
+  );
+  const prevPendingCountRef = useRef(0);
+  const audioCtxRef = useRef(null);
   const navigate = useNavigate();
+
+  // Beep sintético via Web Audio API — 3 tonos cortos para alertar nuevo pedido
+  const playAlarm = () => {
+    if (alarmMuted) return;
+    try {
+      if (!audioCtxRef.current) {
+        const Ctor = window.AudioContext || window.webkitAudioContext;
+        if (!Ctor) return;
+        audioCtxRef.current = new Ctor();
+      }
+      const ctx = audioCtxRef.current;
+      if (ctx.state === 'suspended') ctx.resume();
+      const now = ctx.currentTime;
+      [0, 0.22, 0.44].forEach((startOffset) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'square';
+        osc.frequency.value = 880;
+        gain.gain.setValueAtTime(0, now + startOffset);
+        gain.gain.linearRampToValueAtTime(0.35, now + startOffset + 0.01);
+        gain.gain.linearRampToValueAtTime(0, now + startOffset + 0.18);
+        osc.start(now + startOffset);
+        osc.stop(now + startOffset + 0.2);
+      });
+    } catch (e) {
+      console.warn('[alarm] beep blocked:', e);
+    }
+  };
+
+  const toggleAlarm = () => {
+    setAlarmMuted((m) => {
+      const next = !m;
+      try { localStorage.setItem('drip_alarm_muted', next ? '1' : '0'); } catch (e) { /* noop */ }
+      return next;
+    });
+  };
 
   const handlePrintTicket = async (order) => {
     if (printBusy) return;
@@ -1224,18 +1268,44 @@ const AdminDashboard = () => {
   };
 
   useEffect(() => {
-    // Carga inicial + polling cada 10s para reflejar pedidos nuevos sin
-    // necesidad de recargar la página manualmente.
+    // Carga inicial + polling cada 10s. Refrescamos también al recuperar foco
+    // o al volver la pestaña visible — Chrome throttlea setInterval cuando
+    // la tab está en background, así que sin esto los datos quedan viejos.
     loadData();
     const id = setInterval(loadData, 10000);
     const onFocus = () => loadData();
+    const onVisibility = () => { if (!document.hidden) loadData(); };
     window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
     return () => {
       clearInterval(id);
       window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Detección de pedido nuevo → suena alarma + toast.
+  // Cuenta pedidos PENDING de la jornada activa; si crece, beep.
+  useEffect(() => {
+    if (!orders) return;
+    const pendingCount = orders.filter(o =>
+      (jornadaActiva ? o.jornadaId === jornadaActiva.id : false) &&
+      o.orderStatus === ORDER_STATUS.PENDING
+    ).length;
+    const prev = prevPendingCountRef.current;
+    // Sólo alertamos si ya hicimos al menos un loadData (lastUpdated != null)
+    // — así evitamos disparar la alarma con la primera carga al abrir la app.
+    if (lastUpdated && pendingCount > prev) {
+      playAlarm();
+      const delta = pendingCount - prev;
+      toast.info(
+        `📥 ${delta === 1 ? 'Pedido nuevo' : `${delta} pedidos nuevos`} · ${pendingCount} pendiente${pendingCount > 1 ? 's' : ''}`
+      );
+    }
+    prevPendingCountRef.current = pendingCount;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orders, jornadaActiva]);
 
   // Polling de jornada activa cada 30s para reaccionar a apertura/cierre
   // (posiblemente desde otro dispositivo/admin concurrente).
@@ -1291,8 +1361,10 @@ const AdminDashboard = () => {
       setProducts(productsData);
       setCustomers(customersData);
       setOrders(ordersData);
+      setLastUpdated(new Date());
     } catch (error) {
-      toast.error('Error al cargar los datos');
+      console.error('[AdminDashboard] loadData failed:', error);
+      // Toast silenciado en polling para no spamear si hay un error transitorio
     } finally {
       setLoading(false);
     }
@@ -1607,10 +1679,22 @@ const AdminDashboard = () => {
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-2">
             {/* Header inline: volver a la izquierda, tabs centrados, acciones a la derecha */}
             <div className="flex items-center gap-2 flex-wrap">
-              <div className="flex-1 flex justify-start">
+              <div className="flex-1 flex justify-start items-center gap-2">
                 <Button asChild variant="outline" size="sm" className="border-border h-8 px-2 text-[11px]">
                   <Link to="/"><ArrowLeft className="mr-1 h-3 w-3" />Volver</Link>
                 </Button>
+                {/* Mute/unmute de la alarma de pedidos nuevos */}
+                <button
+                  onClick={toggleAlarm}
+                  title={alarmMuted ? 'Activar alarma de pedidos' : 'Silenciar alarma'}
+                  className={`inline-flex items-center justify-center h-8 w-8 rounded border transition-all ${
+                    alarmMuted
+                      ? 'border-border text-muted-foreground bg-card'
+                      : 'border-primary/50 text-primary bg-primary/10'
+                  }`}
+                >
+                  <span className="text-base leading-none">{alarmMuted ? '🔕' : '🔔'}</span>
+                </button>
               </div>
 
               <TabsList className="bg-card border border-border p-0.5 h-auto flex gap-0">
