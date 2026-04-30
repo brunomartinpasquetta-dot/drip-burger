@@ -131,10 +131,15 @@ router.post('/webhook', async (req, res) => {
                     order = await pb.collection('orders').getOne(externalReference, { requestKey: null });
                 } catch (e) { /* noop */ }
 
-                if (order && !order.jornadaId) {
+                if (order) {
                     try {
                         const jornada = await pb.collection('jornadas').getFirstListItem('estado = "abierta"', { requestKey: null });
-                        if (jornada?.id) patch.jornadaId = jornada.id;
+                        // Reasignamos siempre a la jornada abierta — si el
+                        // order tenía jornadaId de una jornada cerrada, el
+                        // cobro debe entrar en la caja activa actual.
+                        if (jornada?.id && order.jornadaId !== jornada.id) {
+                            patch.jornadaId = jornada.id;
+                        }
                     } catch (e) {
                         logger.warn(`[payments/webhook] sin jornada abierta para asignar al order ${externalReference}`);
                     }

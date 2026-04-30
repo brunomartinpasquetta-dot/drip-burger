@@ -1552,7 +1552,11 @@ const AdminDashboard = () => {
     try {
       const current = orders.find((o) => o.id === orderId);
       const patch = { paymentStatus: PAYMENT_STATUS.PAID };
-      if (jornadaActiva?.id && !current?.jornadaId) {
+      // Reasignamos siempre a la jornada activa cuando se cobra. Esto cubre
+      // dos casos: (a) el order no tenía jornadaId (huérfano) y (b) el order
+      // tenía jornadaId de una jornada YA CERRADA — el cobro tiene que entrar
+      // en la caja del admin que está cobrando ahora, no en la cerrada.
+      if (jornadaActiva?.id && current?.jornadaId !== jornadaActiva.id) {
         patch.jornadaId = jornadaActiva.id;
       }
       const updated = await pb.collection('orders').update(orderId, patch, { requestKey: null });
