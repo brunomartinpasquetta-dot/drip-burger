@@ -207,4 +207,11 @@ body.printing #print-area { display: block; }
   }
   /* Espacio antes del corte */
   #print-area .ticket-spacer { height: 8mm; }
+  /* Helper: fuerza salto de página entre comandas para que la térmica
+     corte el papel y cada pedido salga en un ticket independiente. */
+  #print-area .ticket-page-break,
+  #print-area [style*="page"] {
+    break-after: page;
+    page-break-after: always;
+  }
 }
