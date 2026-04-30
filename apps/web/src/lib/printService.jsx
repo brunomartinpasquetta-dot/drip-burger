@@ -57,33 +57,40 @@ const printNode = async (node) => {
       activeRoot = root;
       root.render(node);
 
-      // Marca el body para activar el CSS de impresión y dar 1 frame
-      // a React para flushear el DOM antes de invocar print().
+      // Marca el body para activar el CSS de impresión.
+      // Con `content-visibility: auto` + `contain: strict` el subtree se
+      // promueve a un layer aislado y el primer paint es casi inmediato,
+      // así que un solo rAF basta para flushear el DOM de React.
       document.body.classList.add('printing');
 
       requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          const onAfter = () => {
-            window.removeEventListener('afterprint', onAfter);
+        const finish = () => {
+          // Diferimos el cleanup para no bloquear la cola del evento
+          // afterprint, que en Chrome se dispara en el mismo tick.
+          setTimeout(() => {
             cleanup();
             resolve();
-          };
-          window.addEventListener('afterprint', onAfter, { once: true });
+          }, 0);
+        };
 
-          // Fallback por si afterprint no se dispara (algunos Safari)
-          cleanupTimer = setTimeout(() => {
-            window.removeEventListener('afterprint', onAfter);
-            cleanup();
-            resolve();
-          }, 10000);
+        const onAfter = () => {
+          window.removeEventListener('afterprint', onAfter);
+          finish();
+        };
+        window.addEventListener('afterprint', onAfter, { once: true });
 
-          try {
-            window.print();
-          } catch (err) {
-            cleanup();
-            reject(err);
-          }
-        });
+        // Fallback por si afterprint no se dispara (algunos Safari)
+        cleanupTimer = setTimeout(() => {
+          window.removeEventListener('afterprint', onAfter);
+          finish();
+        }, 10000);
+
+        try {
+          window.print();
+        } catch (err) {
+          cleanup();
+          reject(err);
+        }
       });
     } catch (err) {
       cleanup();

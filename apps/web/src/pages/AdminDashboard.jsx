@@ -1211,7 +1211,19 @@ const AdminDashboard = () => {
     return true;
   };
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    // Carga inicial + polling cada 10s para reflejar pedidos nuevos sin
+    // necesidad de recargar la página manualmente.
+    loadData();
+    const id = setInterval(loadData, 10000);
+    const onFocus = () => loadData();
+    window.addEventListener('focus', onFocus);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener('focus', onFocus);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Polling de jornada activa cada 30s para reaccionar a apertura/cierre
   // (posiblemente desde otro dispositivo/admin concurrente).
@@ -1482,35 +1494,47 @@ const AdminDashboard = () => {
 
     // Step 2: send WhatsApp notification (best-effort — never blocks the order flow)
     let notificationState = 'failed'; // 'sent' | 'not_configured' | 'failed'
-    try {
-      const res = await apiServerClient.fetch('/orders/send-whatsapp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orderId: order.id,
-          customerPhone: order.customerPhone,
-          customerName: order.customerName?.split(' ')?.[0] || 'Cliente',
-          deliveryTimeSlot: order.deliveryTimeSlot
-        })
-      });
-      if (res.ok) {
+    let notificationReason = '';
+
+    if (!order.customerPhone) {
+      notificationReason = 'El pedido no tiene teléfono de cliente';
+    } else {
+      try {
+        const res = await apiServerClient.fetch('/orders/send-whatsapp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orderId: order.id,
+            customerPhone: order.customerPhone,
+            customerName: order.customerName?.split(' ')?.[0] || 'Cliente',
+            deliveryTimeSlot: order.deliveryTimeSlot
+          })
+        });
         const body = await res.json().catch(() => ({}));
-        if (body.messageSent === true) {
+        if (res.ok && body.messageSent === true) {
           notificationState = 'sent';
-        } else if (body.reason === 'Credenciales no configuradas') {
-          notificationState = 'not_configured';
+        } else {
+          // Categorizar por reason para distinguir "no configurado" del resto
+          const reason = body.reason || body.error || `HTTP ${res.status}`;
+          notificationReason = reason;
+          if (
+            /deshabilit|no inicializ|credencial/i.test(reason)
+          ) {
+            notificationState = 'not_configured';
+          }
         }
+      } catch (e) {
+        console.error('[handleSendWhatsApp] notification failed:', e);
+        notificationReason = e?.message || 'Error de red';
       }
-    } catch (e) {
-      console.error('[handleSendWhatsApp] notification failed:', e);
     }
 
     if (notificationState === 'sent') {
-      toast.success('Pedido marcado como En camino y WhatsApp enviado');
+      toast.success('Pedido En camino · WhatsApp enviado a ' + (order.customerPhone || ''));
     } else if (notificationState === 'not_configured') {
-      toast.warning('Pedido marcado En camino. WhatsApp no configurado.');
+      toast.warning('Pedido En camino. WhatsApp no disponible: ' + notificationReason);
     } else {
-      toast.warning('Pedido marcado En camino, pero falló la notificación WhatsApp');
+      toast.warning(`Pedido En camino. WhatsApp falló: ${notificationReason}`);
     }
     markPending(order.id, false);
   };
@@ -1579,11 +1603,21 @@ const AdminDashboard = () => {
 
               <TabsList className="bg-card border border-border p-0.5 h-auto flex gap-0">
                 <TabsTrigger value="orders" className="font-bold uppercase tracking-wide py-1 px-2.5 text-[11px] data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:text-sm data-[state=active]:font-black data-[state=active]:px-3.5 data-[state=active]:py-1.5">
-                  Pedidos {orders.filter(o => o.orderStatus === ORDER_STATUS.PENDING || !o.orderStatus).length > 0 && (
-                    <span className="ml-1 bg-yellow-500 text-black text-[9px] rounded-full px-1 leading-3">
-                      {orders.filter(o => o.orderStatus === ORDER_STATUS.PENDING || !o.orderStatus).length}
-                    </span>
-                  )}
+                  Pedidos {(() => {
+                    // Sólo contar pedidos PENDING de la jornada activa.
+                    // Sin jornada: 0 (no mostrar badge fantasma).
+                    if (!jornadaActiva) return null;
+                    const pendientes = orders.filter(o =>
+                      o.jornadaId === jornadaActiva.id &&
+                      o.orderStatus === ORDER_STATUS.PENDING
+                    );
+                    if (pendientes.length === 0) return null;
+                    return (
+                      <span className="ml-1 bg-yellow-500 text-black text-[9px] rounded-full px-1 leading-3">
+                        {pendientes.length}
+                      </span>
+                    );
+                  })()}
                 </TabsTrigger>
                 <TabsTrigger value="kitchen" className="font-bold uppercase tracking-wide py-1 px-2.5 text-[11px] data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:text-sm data-[state=active]:font-black data-[state=active]:px-3.5 data-[state=active]:py-1.5">
                   <ChefHat className="mr-1 h-3 w-3" />Cocina

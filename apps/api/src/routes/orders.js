@@ -1,7 +1,7 @@
 import express from 'express';
 import pb from '../utils/pocketbaseClient.js';
 import logger from '../utils/logger.js';
-import { isReady, sendMessage } from '../services/whatsappService.js';
+import { isReady, sendMessage, normalizePhone } from '../services/whatsappService.js';
 
 const router = express.Router();
 
@@ -148,18 +148,30 @@ router.post('/send-whatsapp', async (req, res) => {
     `Llega aprox a las ${deliveryTimeSlot}.\n` +
     `¡Gracias por elegirnos!`;
 
+  // Normalizamos manualmente para loguear ambos formatos y diagnosticar
+  // si la falla viene de un teléfono mal cargado en el pedido.
+  const normalized = normalizePhone(customerPhone);
+  logger.info(`[send-whatsapp] order=${orderId} phone="${customerPhone}" → normalized=${normalized}`);
+
+  if (!normalized || normalized.length < 12) {
+    const reason = `Teléfono inválido: "${customerPhone}" (normalizado: ${normalized})`;
+    logger.warn(`[send-whatsapp] ${reason}`);
+    return res.json({ success: false, error: reason });
+  }
+
   try {
     const message = await sendMessage(customerPhone, messageText);
-    logger.info(`WhatsApp enviado OK — order ${orderId} → ${customerPhone} (wa id: ${message?.id?._serialized || 'n/a'})`);
+    logger.info(`WhatsApp enviado OK — order ${orderId} → ${normalized} (wa id: ${message?.id?._serialized || 'n/a'})`);
     return res.json({
       success: true,
       messageSent: true,
     });
   } catch (error) {
-    logger.error(`WhatsApp send failed for order ${orderId}: ${error.message}`);
+    logger.error(`WhatsApp send failed for order ${orderId} (phone "${customerPhone}" → ${normalized}): ${error.message}`);
     return res.json({
       success: false,
       error: error.message,
+      phoneNormalized: normalized,
     });
   }
 });

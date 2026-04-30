@@ -15,9 +15,10 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Minus, Plus, Trash2, ShoppingBag, Loader2 } from 'lucide-react';
+import { Minus, Plus, Trash2, ShoppingBag, Loader2, Check, AlertCircle } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
+import { normalizePhone, isValidPhone, formatPreview } from '@/lib/phoneAr.js';
 
 const formatPrice = (price) => {
   return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(price || 0);
@@ -121,11 +122,16 @@ const CartPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slotAvailability, cartMedallions]);
 
+  // Pre-cómputo del teléfono normalizado para preview + validación
+  const phoneNormalized = normalizePhone(formData.telefono);
+  const phoneValid = isValidPhone(phoneNormalized);
+  const phonePreview = phoneValid ? formatPreview(phoneNormalized) : '';
+
   const validateForm = () => {
     const newErrors = {};
     if (!formData.nombre.trim()) newErrors.nombre = true;
     if (!formData.apellido.trim()) newErrors.apellido = true;
-    if (!formData.telefono.trim()) newErrors.telefono = true;
+    if (!formData.telefono.trim() || !phoneValid) newErrors.telefono = true;
     if (!formData.direccion.trim()) newErrors.direccion = true;
     if (!formData.horario_reparto) newErrors.horario_reparto = true;
     if (!formData.forma_pago) newErrors.forma_pago = true;
@@ -173,10 +179,13 @@ const CartPage = () => {
 
       const orderData = {
         nombre_apellido: nombreCompleto,
-        telefono: formData.telefono,
+        // Persistimos siempre el teléfono normalizado (formato 549XXXXXXXXXX)
+        // para que la API de WhatsApp y los reportes nunca dependan de cómo
+        // lo escribió el cliente en el form.
+        telefono: phoneNormalized,
         direccion: formData.direccion,
         customerName: nombreCompleto,
-        customerPhone: formData.telefono,
+        customerPhone: phoneNormalized,
         customerAddress: formData.direccion,
         items: cartItems.map(item => ({
           productId: item.productId,
@@ -416,10 +425,15 @@ const CartPage = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="telefono" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Teléfono</Label>
+                  <Label htmlFor="telefono" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    WhatsApp
+                  </Label>
                   <Input
                     id="telefono"
                     type="tel"
+                    inputMode="tel"
+                    autoComplete="tel"
+                    placeholder="342 555 1234"
                     value={formData.telefono}
                     onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}
                     className={cn(
@@ -427,6 +441,24 @@ const CartPage = () => {
                       errors.telefono && "border-destructive bg-destructive/10 focus-visible:ring-destructive"
                     )}
                   />
+                  {/* Preview en vivo del número normalizado */}
+                  {formData.telefono.trim() ? (
+                    phoneValid ? (
+                      <div className="flex items-center gap-1.5 text-[11px] font-bold text-green-500">
+                        <Check className="w-3 h-3 shrink-0" />
+                        <span>Te avisamos a <span className="tabular-nums">{phonePreview}</span></span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5 text-[11px] font-bold text-red-400">
+                        <AlertCircle className="w-3 h-3 shrink-0" />
+                        <span>Número incompleto. Escribí área + número (ej: 342 555 1234).</span>
+                      </div>
+                    )
+                  ) : (
+                    <p className="text-[10px] text-muted-foreground font-medium">
+                      Sin 0 ni 15. Sólo área + número.
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-2">

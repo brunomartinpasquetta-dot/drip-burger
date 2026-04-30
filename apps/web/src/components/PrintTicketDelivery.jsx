@@ -53,7 +53,7 @@ const PrintTicketDelivery = ({ order }) => {
   const isPaid = order.paymentStatus === PAYMENT_STATUS.PAID;
 
   return (
-    <>
+    <div style={{ contain: 'layout style paint' }}>
       {/* HEADER — DOUBLE_SIZE + BOLD + CENTER */}
       <div className="ticket-center ticket-double">DRIP BURGER</div>
       <div className="ticket-sep">{SEP_EQ}</div>
@@ -150,7 +150,7 @@ const PrintTicketDelivery = ({ order }) => {
       <br />
       <div className="ticket-center">Gracias por tu pedido!</div>
       <div className="ticket-spacer" />
-    </>
+    </div>
   );
 };
 

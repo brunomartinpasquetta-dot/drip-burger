@@ -48,7 +48,7 @@ const PrintKitchenOrder = ({ orders, timeSlot }) => {
   }
 
   return (
-    <>
+    <div style={{ contain: 'layout style paint' }}>
       <div className="ticket-center ticket-double">COMANDA COCINA</div>
       <div className="ticket-sep">{SEP_EQ}</div>
       <div className="ticket-center ticket-double">
@@ -99,7 +99,7 @@ const PrintKitchenOrder = ({ orders, timeSlot }) => {
         <div>{totalPapas} papas fritas</div>
       </div>
       <div className="ticket-spacer" />
-    </>
+    </div>
   );
 };
 
