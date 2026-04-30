@@ -174,8 +174,12 @@ const ConfirmationPage = () => {
                       <MapPin className="w-5 h-5" />
                     </div>
                     <div>
-                      <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">Dirección</p>
-                      <p className="font-bold text-base">{order.customerAddress}</p>
+                      <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">
+                        {order.takeAway ? 'Take Away' : 'Dirección'}
+                      </p>
+                      <p className="font-bold text-base">
+                        {order.takeAway ? 'Retira en el local' : order.customerAddress}
+                      </p>
                       <p className="text-muted-foreground text-sm mt-1">{order.customerName}</p>
                     </div>
                   </div>

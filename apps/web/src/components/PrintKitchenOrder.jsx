@@ -66,6 +66,7 @@ const PrintKitchenOrder = ({ orders, timeSlot }) => {
           <div key={order.id || oi}>
             <div className="ticket-double-height">
               {(order.customerName || 'SIN NOMBRE').toUpperCase()}
+              {order.takeAway && ' [TAKE AWAY]'}
             </div>
             <div>#{order.orderNumber || order.id}</div>
             {items.map((item, idx) => {

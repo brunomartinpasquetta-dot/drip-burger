@@ -353,6 +353,12 @@ const KitchenView = ({ orders, onSendToKitchen, onMarkReady, isPending }) => {
                     <p className="text-base font-black uppercase tracking-tight leading-tight break-words min-w-0 flex-1">
                       {order.customerName || 'Sin nombre'}
                     </p>
+                    {order.takeAway && (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-primary text-black text-[9px] font-black uppercase tracking-wide shrink-0">
+                        <Utensils className="w-2.5 h-2.5" />
+                        Take Away
+                      </span>
+                    )}
                     <UrgencyBadge urgency={urgency} />
                   </div>
 
@@ -463,6 +469,12 @@ const KitchenView = ({ orders, onSendToKitchen, onMarkReady, isPending }) => {
                     <p className="text-base font-black uppercase tracking-tight leading-tight break-words min-w-0 flex-1">
                       {order.customerName || 'Sin nombre'}
                     </p>
+                    {order.takeAway && (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-primary text-black text-[9px] font-black uppercase tracking-wide shrink-0">
+                        <Utensils className="w-2.5 h-2.5" />
+                        Take Away
+                      </span>
+                    )}
                     <UrgencyBadge urgency={urgency} />
                   </div>
                   <div className="space-y-0.5">
@@ -1785,7 +1797,7 @@ const AdminDashboard = () => {
                           </p>
                         </div>
 
-                        {/* Row 2: teléfono + dirección inline */}
+                        {/* Row 2: teléfono + dirección o badge Take Away */}
                         <div className="flex items-center gap-2 flex-wrap text-[11px] leading-tight">
                           <a
                             href={`tel:${order.customerPhone}`}
@@ -1794,10 +1806,17 @@ const AdminDashboard = () => {
                             <Phone className="w-2.5 h-2.5 text-muted-foreground shrink-0" />
                             <span>{order.customerPhone || '—'}</span>
                           </a>
-                          <span className="inline-flex items-center gap-1 font-bold min-w-0">
-                            <MapPin className="w-2.5 h-2.5 text-muted-foreground shrink-0" />
-                            <span className="truncate">{order.customerAddress || '—'}</span>
-                          </span>
+                          {order.takeAway ? (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-primary/15 border border-primary/40 text-primary text-[10px] font-black uppercase tracking-wide">
+                              <Utensils className="w-2.5 h-2.5 shrink-0" />
+                              Take Away
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 font-bold min-w-0">
+                              <MapPin className="w-2.5 h-2.5 text-muted-foreground shrink-0" />
+                              <span className="truncate">{order.customerAddress || '—'}</span>
+                            </span>
+                          )}
                         </div>
 
                         {/* Row 3: items (contenido del pedido) */}

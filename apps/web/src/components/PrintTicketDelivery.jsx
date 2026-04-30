@@ -73,10 +73,12 @@ const PrintTicketDelivery = ({ order }) => {
         <div className="ticket-bold">Tel: {order.customerPhone}</div>
       )}
 
-      {/* línea vacía + DIRECCIÓN doble tamaño */}
+      {/* línea vacía + DIRECCIÓN o badge TAKE AWAY (doble tamaño) */}
       <br />
       <div className="ticket-double">
-        {(order.customerAddress || '-').toUpperCase()}
+        {order.takeAway
+          ? '*** TAKE AWAY ***'
+          : (order.customerAddress || '-').toUpperCase()}
       </div>
       <div className="ticket-sep">{SEP_EQ}</div>
 

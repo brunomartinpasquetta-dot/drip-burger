@@ -15,8 +15,9 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Minus, Plus, Trash2, ShoppingBag, Loader2, Check, AlertCircle } from 'lucide-react';
+import { Minus, Plus, Trash2, ShoppingBag, Loader2, Check, ShoppingBasket } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import { normalizePhone, isValidPhone, formatPreview } from '@/lib/phoneAr.js';
 
@@ -35,17 +36,21 @@ const CartPage = () => {
     apellido: '',
     telefono: '',
     direccion: '',
+    takeAway: false,
     horario_reparto: '',
     forma_pago: 'Efectivo'
   });
 
   const {
-    shippingPrice,
+    shippingPrice: shippingPriceRaw,
     zona,
     precios,
     loading: shippingLoading,
     formatShipping,
   } = useShippingPrice(formData.direccion);
+
+  // Take Away: no se cobra envío; el zona/precios se ignoran.
+  const shippingPrice = formData.takeAway ? 0 : shippingPriceRaw;
 
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -122,7 +127,7 @@ const CartPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slotAvailability, cartMedallions]);
 
-  // Pre-cómputo del teléfono normalizado para preview + validación
+  // Pre-cómputo del teléfono normalizado para preview
   const phoneNormalized = normalizePhone(formData.telefono);
   const phoneValid = isValidPhone(phoneNormalized);
   const phonePreview = phoneValid ? formatPreview(phoneNormalized) : '';
@@ -131,8 +136,12 @@ const CartPage = () => {
     const newErrors = {};
     if (!formData.nombre.trim()) newErrors.nombre = true;
     if (!formData.apellido.trim()) newErrors.apellido = true;
-    if (!formData.telefono.trim() || !phoneValid) newErrors.telefono = true;
-    if (!formData.direccion.trim()) newErrors.direccion = true;
+    // Sólo exigimos que NO esté vacío. La normalización + validación estricta
+    // las hacemos best-effort: si el formato no matchea AR exacto, igual
+    // dejamos pasar y el admin verá el error al mandar WhatsApp.
+    if (!formData.telefono.trim()) newErrors.telefono = true;
+    // Take Away: no se pide dirección.
+    if (!formData.takeAway && !formData.direccion.trim()) newErrors.direccion = true;
     if (!formData.horario_reparto) newErrors.horario_reparto = true;
     if (!formData.forma_pago) newErrors.forma_pago = true;
 
@@ -183,10 +192,11 @@ const CartPage = () => {
         // para que la API de WhatsApp y los reportes nunca dependan de cómo
         // lo escribió el cliente en el form.
         telefono: phoneNormalized,
-        direccion: formData.direccion,
+        direccion: formData.takeAway ? '' : formData.direccion,
+        takeAway: !!formData.takeAway,
         customerName: nombreCompleto,
         customerPhone: phoneNormalized,
-        customerAddress: formData.direccion,
+        customerAddress: formData.takeAway ? '' : formData.direccion,
         items: cartItems.map(item => ({
           productId: item.productId,
           productName: item.productName,
@@ -441,57 +451,87 @@ const CartPage = () => {
                       errors.telefono && "border-destructive bg-destructive/10 focus-visible:ring-destructive"
                     )}
                   />
-                  {/* Preview en vivo del número normalizado */}
-                  {formData.telefono.trim() ? (
-                    phoneValid ? (
-                      <div className="flex items-center gap-1.5 text-[11px] font-bold text-green-500">
-                        <Check className="w-3 h-3 shrink-0" />
-                        <span>Te avisamos a <span className="tabular-nums">{phonePreview}</span></span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-1.5 text-[11px] font-bold text-red-400">
-                        <AlertCircle className="w-3 h-3 shrink-0" />
-                        <span>Número incompleto. Escribí área + número (ej: 342 555 1234).</span>
-                      </div>
-                    )
-                  ) : (
-                    <p className="text-[10px] text-muted-foreground font-medium">
-                      Sin 0 ni 15. Sólo área + número.
-                    </p>
-                  )}
+                  {/* Helper siempre visible en verde — guía al cliente. Cuando
+                      el formato es válido, además muestra el preview a +54 9... */}
+                  <div className="flex items-start gap-1.5 text-[10px] font-medium text-green-500/90">
+                    <Check className="w-3 h-3 shrink-0 mt-px" />
+                    <span>
+                      Colocá tu número con característica, sin 0 ni 15.
+                      {phoneValid && (
+                        <>
+                          {' '}<span className="font-bold tabular-nums">→ {phonePreview}</span>
+                        </>
+                      )}
+                    </span>
+                  </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="direccion" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Dirección de Entrega</Label>
-                  <Input
-                    id="direccion"
-                    value={formData.direccion}
-                    onChange={(e) => setFormData({ ...formData, direccion: e.target.value })}
-                    placeholder="Ej: San Martín 1550"
-                    className={cn(
-                      "bg-background border-border text-foreground focus-visible:ring-1",
-                      errors.direccion && "border-destructive bg-destructive/10 focus-visible:ring-destructive"
-                    )}
-                  />
-                  {formData.direccion.trim() && !shippingLoading && zona && (
-                    <div
-                      className={cn(
-                        "flex items-center justify-between gap-2 text-[11px] font-black uppercase tracking-wider px-2.5 py-1.5 rounded border",
-                        zona === 'centro'
-                          ? "text-green-400 border-green-500/40 bg-green-500/10"
-                          : "text-orange-400 border-orange-500/40 bg-orange-500/10"
-                      )}
-                    >
-                      <span className="flex items-center gap-1.5">
-                        <span className="text-[8px]">●</span>
-                        {zona === 'centro' ? 'Zona centro' : 'Zona alejada'}
-                      </span>
-                      <span className="tabular-nums">
-                        {shippingPrice === 0 ? 'Envío gratis' : `Envío ${formatPrice(shippingPrice)}`}
-                      </span>
+                {/* Toggle Take Away — si está ON oculta dirección y no cobra envío */}
+                <div className={cn(
+                  "flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg border-2 transition-all",
+                  formData.takeAway
+                    ? "border-primary/60 bg-primary/10"
+                    : "border-border bg-background/40"
+                )}>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <ShoppingBasket className={cn(
+                      "w-4 h-4 shrink-0",
+                      formData.takeAway ? "text-primary" : "text-muted-foreground"
+                    )} />
+                    <div className="min-w-0">
+                      <Label htmlFor="takeAway" className={cn(
+                        "text-xs font-black uppercase tracking-wide cursor-pointer block",
+                        formData.takeAway ? "text-primary" : "text-foreground"
+                      )}>
+                        Take Away
+                      </Label>
+                      <p className="text-[10px] text-muted-foreground font-medium leading-tight">
+                        Retiro en el local — sin envío
+                      </p>
                     </div>
-                  )}
+                  </div>
+                  <Switch
+                    id="takeAway"
+                    checked={formData.takeAway}
+                    onCheckedChange={(checked) => setFormData({ ...formData, takeAway: checked })}
+                    className="data-[state=checked]:bg-primary"
+                  />
                 </div>
+
+                {/* Dirección de envío — sólo si NO es take away */}
+                {!formData.takeAway && (
+                  <div className="space-y-2">
+                    <Label htmlFor="direccion" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Dirección de Entrega</Label>
+                    <Input
+                      id="direccion"
+                      value={formData.direccion}
+                      onChange={(e) => setFormData({ ...formData, direccion: e.target.value })}
+                      placeholder="Ej: San Martín 1550"
+                      className={cn(
+                        "bg-background border-border text-foreground focus-visible:ring-1",
+                        errors.direccion && "border-destructive bg-destructive/10 focus-visible:ring-destructive"
+                      )}
+                    />
+                    {formData.direccion.trim() && !shippingLoading && zona && (
+                      <div
+                        className={cn(
+                          "flex items-center justify-between gap-2 text-[11px] font-black uppercase tracking-wider px-2.5 py-1.5 rounded border",
+                          zona === 'centro'
+                            ? "text-green-400 border-green-500/40 bg-green-500/10"
+                            : "text-orange-400 border-orange-500/40 bg-orange-500/10"
+                        )}
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <span className="text-[8px]">●</span>
+                          {zona === 'centro' ? 'Zona centro' : 'Zona alejada'}
+                        </span>
+                        <span className="tabular-nums">
+                          {shippingPrice === 0 ? 'Envío gratis' : `Envío ${formatPrice(shippingPrice)}`}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div className="space-y-2 pt-2 border-t border-border/50">
                   <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 block">Horario de Reparto</Label>
@@ -603,14 +643,18 @@ const CartPage = () => {
 
                     <div className="flex justify-between text-sm font-medium items-center">
                       <span className="text-muted-foreground uppercase tracking-wider">
-                        Envío
-                        {zona && (
+                        {formData.takeAway ? 'Take Away' : 'Envío'}
+                        {!formData.takeAway && zona && (
                           <span className="ml-1.5 text-[10px] font-black tracking-widest opacity-70">
                             · {zona === 'centro' ? 'CENTRO' : 'ALEJADA'}
                           </span>
                         )}
                       </span>
-                      {shippingLoading ? (
+                      {formData.takeAway ? (
+                        <div className="font-bold text-right text-primary uppercase text-xs tracking-wider">
+                          Retiro en local
+                        </div>
+                      ) : shippingLoading ? (
                         <Skeleton className="h-5 w-20" />
                       ) : (
                         <div className={`font-bold text-right ${shippingInfo.isFree ? 'text-green-500' : ''}`}>
