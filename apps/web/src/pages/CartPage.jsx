@@ -186,17 +186,26 @@ const CartPage = () => {
       const subtotal = getCartTotal();
       const totalAmount = subtotal + shippingPrice;
 
+      // Sentinel cuando es take away: el schema de orders tiene direccion
+      // y customerAddress como required, así que en vez de string vacía
+      // guardamos un placeholder que el resto del sistema interpreta junto
+      // con `takeAway: true` (cards admin, ticket, comanda).
+      const TAKE_AWAY_SENTINEL = 'TAKE AWAY — Retira en local';
+      const direccionFinal = formData.takeAway
+        ? TAKE_AWAY_SENTINEL
+        : formData.direccion;
+
       const orderData = {
         nombre_apellido: nombreCompleto,
         // Persistimos siempre el teléfono normalizado (formato 549XXXXXXXXXX)
         // para que la API de WhatsApp y los reportes nunca dependan de cómo
         // lo escribió el cliente en el form.
         telefono: phoneNormalized,
-        direccion: formData.takeAway ? '' : formData.direccion,
+        direccion: direccionFinal,
         takeAway: !!formData.takeAway,
         customerName: nombreCompleto,
         customerPhone: phoneNormalized,
-        customerAddress: formData.takeAway ? '' : formData.direccion,
+        customerAddress: direccionFinal,
         items: cartItems.map(item => ({
           productId: item.productId,
           productName: item.productName,

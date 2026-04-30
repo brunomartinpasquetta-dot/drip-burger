@@ -353,7 +353,7 @@ const KitchenView = ({ orders, onSendToKitchen, onMarkReady, isPending }) => {
                     <p className="text-base font-black uppercase tracking-tight leading-tight break-words min-w-0 flex-1">
                       {order.customerName || 'Sin nombre'}
                     </p>
-                    {order.takeAway && (
+                    {(order.takeAway || /^TAKE AWAY/i.test(order.customerAddress || '')) && (
                       <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-primary text-black text-[9px] font-black uppercase tracking-wide shrink-0">
                         <Utensils className="w-2.5 h-2.5" />
                         Take Away
@@ -469,7 +469,7 @@ const KitchenView = ({ orders, onSendToKitchen, onMarkReady, isPending }) => {
                     <p className="text-base font-black uppercase tracking-tight leading-tight break-words min-w-0 flex-1">
                       {order.customerName || 'Sin nombre'}
                     </p>
-                    {order.takeAway && (
+                    {(order.takeAway || /^TAKE AWAY/i.test(order.customerAddress || '')) && (
                       <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-primary text-black text-[9px] font-black uppercase tracking-wide shrink-0">
                         <Utensils className="w-2.5 h-2.5" />
                         Take Away
@@ -1890,7 +1890,7 @@ const AdminDashboard = () => {
                             <Phone className="w-2.5 h-2.5 text-muted-foreground shrink-0" />
                             <span>{order.customerPhone || '—'}</span>
                           </a>
-                          {order.takeAway ? (
+                          {(order.takeAway || /^TAKE AWAY/i.test(order.customerAddress || '')) ? (
                             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-primary/15 border border-primary/40 text-primary text-[10px] font-black uppercase tracking-wide">
                               <Utensils className="w-2.5 h-2.5 shrink-0" />
                               Take Away

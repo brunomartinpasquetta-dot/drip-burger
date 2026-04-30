@@ -76,7 +76,7 @@ const PrintTicketDelivery = ({ order }) => {
       {/* línea vacía + DIRECCIÓN o badge TAKE AWAY (doble tamaño) */}
       <br />
       <div className="ticket-double">
-        {order.takeAway
+        {(order.takeAway || /^TAKE AWAY/i.test(order.customerAddress || ''))
           ? '*** TAKE AWAY ***'
           : (order.customerAddress || '-').toUpperCase()}
       </div>
