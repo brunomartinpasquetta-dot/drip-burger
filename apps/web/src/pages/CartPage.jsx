@@ -235,7 +235,14 @@ const CartPage = () => {
       };
 
       if (currentUser?.id) {
-        orderData.user_id = currentUser.id;
+        // user_id mapea al user staff legacy; clienteId mapea a la collection
+        // nueva `clientes`. Seteamos sólo el que corresponda según la
+        // collection del auth actual para no romper rules ni schema.
+        if (currentUser.collectionName === 'clientes') {
+          orderData.clienteId = currentUser.id;
+        } else {
+          orderData.user_id = currentUser.id;
+        }
       }
 
       const order = await pb.collection('orders').create(orderData, { requestKey: null });

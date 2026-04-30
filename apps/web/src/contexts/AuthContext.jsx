@@ -38,15 +38,23 @@ export const AuthProvider = ({ children }) => {
 
   // El 3er parámetro rememberMe se ignora — siempre persistimos en localStorage.
   // Se mantiene en la firma para no romper LoginPage/AuthModal que lo pasan.
+  // Estrategia dual collection: probamos primero `clientes` (la mayoría de
+  // logins son del checkout) y caemos a `users` (admin/staff). El record
+  // resultante trae .collectionName para que la UI sepa con qué está tratando.
   // eslint-disable-next-line no-unused-vars
   const login = async (email, password, rememberMe = true) => {
-    try {
-      const authData = await pb.collection('users').authWithPassword(email, password, { requestKey: null });
-      setCurrentUser(authData.record);
-      return authData.record;
-    } catch (error) {
-      throw new Error('Correo o contraseña inválidos');
+    let lastError = null;
+    for (const coll of ['clientes', 'users']) {
+      try {
+        const authData = await pb.collection(coll).authWithPassword(email, password, { requestKey: null });
+        setCurrentUser(authData.record);
+        return authData.record;
+      } catch (err) {
+        lastError = err;
+      }
     }
+    console.warn('[auth] login falló en clientes y users:', lastError?.message);
+    throw new Error('Correo o contraseña inválidos');
   };
 
   const logout = () => {
@@ -55,13 +63,18 @@ export const AuthProvider = ({ children }) => {
     navigate('/');
   };
 
-  const isAdmin = currentUser?.role === 'ADMIN';
+  // Admin = role ADMIN dentro de la collection `users`. Los `clientes` nunca
+  // tienen role=ADMIN (la collection ni siquiera tiene ese campo).
+  const isAdmin =
+    currentUser?.collectionName === 'users' && currentUser?.role === 'ADMIN';
+  const isCliente = currentUser?.collectionName === 'clientes';
 
   const value = {
     currentUser,
     login,
     logout,
     isAdmin,
+    isCliente,
     isAuthenticated: !!currentUser,
     // isAuthReady = pb.authStore ya fue hidratado (sea con token válido o sin sesión).
     // Los consumers que disparan fetchs sensibles a la auth deben esperar a este flag

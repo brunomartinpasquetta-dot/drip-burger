@@ -606,7 +606,7 @@ const timeOfDayAr = (iso) => {
   }
 };
 
-const CajaCard = ({ currentUserId, jornada, jornadaLoading, onJornadaChange }) => {
+const CajaCard = ({ currentUserId, jornada, jornadaLoading, refreshKey, onJornadaChange }) => {
   const [jornadaOrders, setJornadaOrders] = useState([]);
   const [movimientos, setMovimientos] = useState([]);
 
@@ -655,10 +655,10 @@ const CajaCard = ({ currentUserId, jornada, jornadaLoading, onJornadaChange }) =
     loadData();
     const id = setInterval(loadData, 30000);
     return () => { cancelled = true; clearInterval(id); };
-    // Depende solo del id: evita re-fetches cuando el parent refetchea jornada
-    // y devuelve el mismo record con referencia nueva.
+    // Depende del id de la jornada y de refreshKey (bump del parent al cobrar
+    // un pedido para reflejar el cambio sin esperar al polling de 30s).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jornada?.id]);
+  }, [jornada?.id, refreshKey]);
 
   // ── Cálculos de totales ────────────────────────────────────────
   const activeOrders = jornadaOrders.filter((o) => o.orderStatus !== ORDER_STATUS.CANCELLED);
@@ -1168,6 +1168,9 @@ const AdminDashboard = () => {
   const [printBusy, setPrintBusy] = useState(false);
   const [draggedProductId, setDraggedProductId] = useState(null);
   const [dropTargetId, setDropTargetId] = useState(null);
+  // Bump para forzar refetch del CajaCard cuando se cobra/cancela/cobra MP
+  // sin tener que esperar al polling de 30s.
+  const [cajaRefreshKey, setCajaRefreshKey] = useState(0);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [alarmMuted, setAlarmMuted] = useState(() =>
     typeof window !== 'undefined' && localStorage.getItem('drip_alarm_muted') === '1'
@@ -1353,9 +1356,18 @@ const AdminDashboard = () => {
 
   const loadData = async () => {
     try {
+      // `clientes` es la collection auth dedicada para clientes del e-commerce.
+      // Cae a [] silenciosamente si todavía no se aplicó la migración.
+      const fetchClientes = pb.collection('clientes')
+        .getFullList({ sort: 'created', requestKey: null })
+        .catch((err) => {
+          if (err?.status === 404 || err?.status === 400) return [];
+          console.error('[AdminDashboard] clientes fetch failed:', err);
+          return [];
+        });
       const [productsData, customersData, ordersData] = await Promise.all([
         pb.collection('products').getFullList({ sort: 'orden,created', requestKey: null }),
-        pb.collection('users').getFullList({ filter: 'role = "CUSTOMER"', sort: 'name', requestKey: null }),
+        fetchClientes,
         pb.collection('orders').getFullList({ sort: '-created', requestKey: null })
       ]);
       setProducts(productsData);
@@ -1443,7 +1455,7 @@ const AdminDashboard = () => {
     const key = `cust-${id}`;
     markPending(key, true);
     try {
-      await pb.collection('users').delete(id, { requestKey: null });
+      await pb.collection('clientes').delete(id, { requestKey: null });
       setCustomers(prev => prev.filter(c => c.id !== id));
       toast.success('Cliente eliminado');
     } catch (error) {
@@ -1525,7 +1537,10 @@ const AdminDashboard = () => {
     }
   };
 
-  // Marcar como pagado manualmente (efectivo)
+  // Marcar como pagado manualmente (efectivo).
+  // CRÍTICO: si el order no tiene jornadaId pero hay jornada activa, lo
+  // asignamos en el mismo update. Sin esto el cobro queda fuera del filtro
+  // del CajaCard (filter: `jornadaId = X`) y no aparece en el resumen.
   const handleMarkPaid = async (orderId) => {
     if (!orderId) {
       toast.error('Error: ID del pedido no disponible');
@@ -1535,12 +1550,16 @@ const AdminDashboard = () => {
     if (!requireJornada()) return;
     markPending(orderId, true);
     try {
-      const updated = await pb.collection('orders').update(
-        orderId,
-        { paymentStatus: PAYMENT_STATUS.PAID },
-        { requestKey: null }
-      );
+      const current = orders.find((o) => o.id === orderId);
+      const patch = { paymentStatus: PAYMENT_STATUS.PAID };
+      if (jornadaActiva?.id && !current?.jornadaId) {
+        patch.jornadaId = jornadaActiva.id;
+      }
+      const updated = await pb.collection('orders').update(orderId, patch, { requestKey: null });
       setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...updated } : o));
+      // Trigger refetch del CajaCard para que el cobro aparezca al instante
+      // sin esperar al siguiente tick del polling de 30s.
+      setCajaRefreshKey((k) => k + 1);
       toast.success('Pedido marcado como pagado');
     } catch (error) {
       console.error('[handleMarkPaid] failed:', {
@@ -2318,6 +2337,7 @@ const AdminDashboard = () => {
                 currentUserId={pb.authStore.model?.id}
                 jornada={jornadaActiva}
                 jornadaLoading={jornadaLoading}
+                refreshKey={cajaRefreshKey}
                 onJornadaChange={() => { refetchJornada(); loadData(); }}
               />
             </TabsContent>

@@ -30,29 +30,33 @@ const RegistrationModal = ({ isOpen, onClose, onSuccess, checkoutData }) => {
 
     setLoading(true);
     try {
-      // Create the user account with the pre-filled data
-      await pb.collection('users').create({
+      // Crear cuenta en la collection `clientes` (auth dedicada para clientes
+      // del e-commerce, separada de `users` que es para staff/admin).
+      await pb.collection('clientes').create({
         email,
         password,
         passwordConfirm: password,
-        role: 'CUSTOMER',
         nombre_apellido: checkoutData?.nombre_apellido || '',
         telefono: checkoutData?.telefono || '',
         direccion: checkoutData?.direccion || '',
-        name: checkoutData?.nombre_apellido || '',
-        phone: checkoutData?.telefono || '',
-        address: checkoutData?.direccion || '',
-        emailVisibility: true
+        emailVisibility: true,
       }, { requestKey: null });
 
-      // Auto-login after successful registration
-      await pb.collection('users').authWithPassword(email, password, { requestKey: null });
+      // Auto-login post registro
+      await pb.collection('clientes').authWithPassword(email, password, { requestKey: null });
 
       onSuccess();
       onClose();
     } catch (error) {
-      console.error(error);
-      toast.error('Error al registrarse. Es posible que el correo ya esté en uso.');
+      console.error('[RegistrationModal] register failed:', error?.response?.data || error);
+      const detail = error?.response?.data;
+      if (detail?.email?.code === 'validation_invalid_email' || detail?.email) {
+        toast.error('Email inválido o ya registrado.');
+      } else if (detail?.password) {
+        toast.error('La contraseña no cumple los requisitos.');
+      } else {
+        toast.error('Error al registrarse. Probá con otro email.');
+      }
     } finally {
       setLoading(false);
     }
