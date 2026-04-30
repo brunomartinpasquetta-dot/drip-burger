@@ -57,40 +57,39 @@ const printNode = async (node) => {
       activeRoot = root;
       root.render(node);
 
-      // Marca el body para activar el CSS de impresión.
-      // Con `content-visibility: auto` + `contain: strict` el subtree se
-      // promueve a un layer aislado y el primer paint es casi inmediato,
-      // así que un solo rAF basta para flushear el DOM de React.
+      // Marca el body para activar el CSS de impresión y dar 2 frames a
+      // React + el browser para flushear el DOM antes de invocar print().
+      // Sin esto, en Chrome a veces el window.print() agarra el área vacía.
       document.body.classList.add('printing');
 
       requestAnimationFrame(() => {
-        const finish = () => {
-          // Diferimos el cleanup para no bloquear la cola del evento
-          // afterprint, que en Chrome se dispara en el mismo tick.
-          setTimeout(() => {
+        requestAnimationFrame(() => {
+          const finish = () => {
+            setTimeout(() => {
+              cleanup();
+              resolve();
+            }, 0);
+          };
+
+          const onAfter = () => {
+            window.removeEventListener('afterprint', onAfter);
+            finish();
+          };
+          window.addEventListener('afterprint', onAfter, { once: true });
+
+          // Fallback por si afterprint no se dispara (algunos Safari)
+          cleanupTimer = setTimeout(() => {
+            window.removeEventListener('afterprint', onAfter);
+            finish();
+          }, 10000);
+
+          try {
+            window.print();
+          } catch (err) {
             cleanup();
-            resolve();
-          }, 0);
-        };
-
-        const onAfter = () => {
-          window.removeEventListener('afterprint', onAfter);
-          finish();
-        };
-        window.addEventListener('afterprint', onAfter, { once: true });
-
-        // Fallback por si afterprint no se dispara (algunos Safari)
-        cleanupTimer = setTimeout(() => {
-          window.removeEventListener('afterprint', onAfter);
-          finish();
-        }, 10000);
-
-        try {
-          window.print();
-        } catch (err) {
-          cleanup();
-          reject(err);
-        }
+            reject(err);
+          }
+        });
       });
     } catch (err) {
       cleanup();
