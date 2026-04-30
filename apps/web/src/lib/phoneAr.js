@@ -48,6 +48,53 @@ export const normalizePhone = (phone) => {
 export const isValidPhone = (normalized) =>
   /^549\d{10}$/.test(normalized || '');
 
+// ── Validación anti-trolleo: rechaza teléfonos obviamente falsos ─────
+// Acepta el input crudo (con o sin espacios/guiones). Devuelve
+// { valid: boolean, reason: string } con el motivo específico para mostrar
+// en la UI cuando el cliente intenta enviar basura.
+const SECUENCIAS_TRIVIALES = new Set([
+  '1234567890',
+  '0123456789',
+  '9876543210',
+  '0987654321',
+  '12345678',
+  '87654321',
+]);
+
+export const esTelefonoValido = (raw) => {
+  const digits = String(raw || '').replace(/\D/g, '');
+
+  if (digits.length === 0) {
+    return { valid: false, reason: 'Ingresá un teléfono' };
+  }
+  if (digits.length < 8) {
+    return { valid: false, reason: 'Muy corto (mínimo 8 dígitos)' };
+  }
+  if (digits.length > 14) {
+    return { valid: false, reason: 'Muy largo (máximo 14 dígitos)' };
+  }
+
+  // Todos los dígitos iguales (0000000000, 1111111111, ...)
+  if (/^(\d)\1+$/.test(digits)) {
+    return { valid: false, reason: 'No puede ser todo el mismo dígito' };
+  }
+
+  // Al menos 4 dígitos únicos distintos
+  const unicos = new Set(digits.split('')).size;
+  if (unicos < 4) {
+    return { valid: false, reason: 'Número con muy poca variación' };
+  }
+
+  // Secuencias triviales
+  for (const seq of SECUENCIAS_TRIVIALES) {
+    if (digits === seq || digits.endsWith(seq) || digits.startsWith(seq)) {
+      return { valid: false, reason: 'Secuencia inválida (probá tu número real)' };
+    }
+  }
+
+  return { valid: true, reason: '' };
+};
+
 // Formato de preview legible: +54 9 342 555 1234
 // Ajusta para áreas de 2/3/4 dígitos comunes.
 export const formatPreview = (normalized) => {

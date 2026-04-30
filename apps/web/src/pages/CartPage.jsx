@@ -19,7 +19,7 @@ import { Minus, Plus, Trash2, ShoppingBag, Loader2, Check, ShoppingBasket } from
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
-import { normalizePhone, isValidPhone, formatPreview } from '@/lib/phoneAr.js';
+import { normalizePhone, isValidPhone, formatPreview, esTelefonoValido } from '@/lib/phoneAr.js';
 
 const formatPrice = (price) => {
   return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(price || 0);
@@ -127,19 +127,19 @@ const CartPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slotAvailability, cartMedallions]);
 
-  // Pre-cómputo del teléfono normalizado para preview
+  // Pre-cómputo del teléfono: limpieza + validación anti-trolleo + preview
+  const phoneCheck = esTelefonoValido(formData.telefono);
   const phoneNormalized = normalizePhone(formData.telefono);
-  const phoneValid = isValidPhone(phoneNormalized);
-  const phonePreview = phoneValid ? formatPreview(phoneNormalized) : '';
+  const phoneValidAr = isValidPhone(phoneNormalized);
+  const phonePreview = phoneValidAr ? formatPreview(phoneNormalized) : '';
 
   const validateForm = () => {
     const newErrors = {};
     if (!formData.nombre.trim()) newErrors.nombre = true;
     if (!formData.apellido.trim()) newErrors.apellido = true;
-    // Sólo exigimos que NO esté vacío. La normalización + validación estricta
-    // las hacemos best-effort: si el formato no matchea AR exacto, igual
-    // dejamos pasar y el admin verá el error al mandar WhatsApp.
-    if (!formData.telefono.trim()) newErrors.telefono = true;
+    // Teléfono: validación anti-trolleo bloqueante (sin números falsos
+    // tipo 0000000000, 1111111111, 1234567890, etc).
+    if (!phoneCheck.valid) newErrors.telefono = true;
     // Take Away: no se pide dirección.
     if (!formData.takeAway && !formData.direccion.trim()) newErrors.direccion = true;
     if (!formData.horario_reparto) newErrors.horario_reparto = true;
@@ -161,7 +161,12 @@ const CartPage = () => {
     }
 
     if (!validateForm()) {
-      toast.error('Completá todos los campos requeridos marcados en rojo');
+      // Mensaje específico cuando lo único bloqueante es el teléfono
+      if (!phoneCheck.valid && formData.telefono.trim()) {
+        toast.error(`Teléfono inválido: ${phoneCheck.reason}. Necesitamos un número real para coordinarte el pedido.`);
+      } else {
+        toast.error('Completá todos los campos requeridos marcados en rojo');
+      }
       return;
     }
 
@@ -450,29 +455,45 @@ const CartPage = () => {
                   <Input
                     id="telefono"
                     type="tel"
-                    inputMode="tel"
+                    inputMode="numeric"
                     autoComplete="tel"
-                    placeholder="342 555 1234"
+                    placeholder="3425551234"
                     value={formData.telefono}
-                    onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}
+                    onChange={(e) => {
+                      // Limpieza en vivo: sólo dígitos. Si pegan "342 555-1234"
+                      // o "342abc1234" queda únicamente el número.
+                      const onlyDigits = e.target.value.replace(/\D/g, '');
+                      setFormData({ ...formData, telefono: onlyDigits });
+                    }}
+                    maxLength={14}
                     className={cn(
-                      "bg-background border-border text-foreground focus-visible:ring-1",
-                      errors.telefono && "border-destructive bg-destructive/10 focus-visible:ring-destructive"
+                      "bg-background border-border text-foreground focus-visible:ring-1 tabular-nums",
+                      errors.telefono && "border-destructive bg-destructive/10 focus-visible:ring-destructive",
+                      formData.telefono && !phoneCheck.valid && "border-red-500 bg-red-500/5"
                     )}
                   />
-                  {/* Helper siempre visible en verde — guía al cliente. Cuando
-                      el formato es válido, además muestra el preview a +54 9... */}
-                  <div className="flex items-start gap-1.5 text-[10px] font-medium text-green-500/90">
-                    <Check className="w-3 h-3 shrink-0 mt-px" />
-                    <span>
-                      Colocá tu número con característica, sin 0 ni 15.
-                      {phoneValid && (
-                        <>
-                          {' '}<span className="font-bold tabular-nums">→ {phonePreview}</span>
-                        </>
-                      )}
-                    </span>
-                  </div>
+                  {/* Helper dinámico:
+                      - vacío: tip neutral
+                      - inválido: mensaje rojo con motivo específico
+                      - válido AR: preview verde con +54 9 ... */}
+                  {!formData.telefono ? (
+                    <p className="text-[10px] text-muted-foreground font-medium">
+                      Sólo números. Con característica, sin 0 ni 15.
+                    </p>
+                  ) : !phoneCheck.valid ? (
+                    <p className="text-[11px] font-bold text-red-500">
+                      ⚠ {phoneCheck.reason}
+                    </p>
+                  ) : (
+                    <div className="flex items-start gap-1.5 text-[10px] font-medium text-green-500/90">
+                      <Check className="w-3 h-3 shrink-0 mt-px" />
+                      <span>
+                        {phoneValidAr
+                          ? <>Te avisamos a <span className="font-bold tabular-nums">{phonePreview}</span></>
+                          : 'Número aceptado.'}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Toggle Take Away — si está ON oculta dirección y no cobra envío */}
