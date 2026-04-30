@@ -4,7 +4,6 @@ import { Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
 import pb from '@/lib/pocketbaseClient';
 import { useAuth } from '@/contexts/AuthContext.jsx';
-import { useStoreHours } from '@/hooks/useStoreHours';
 import Header from '@/components/Header.jsx';
 import AuthModal from '@/components/AuthModal.jsx';
 import ProductCard from '@/components/ProductCard.jsx';
@@ -22,7 +21,6 @@ import { motion } from 'framer-motion';
 
 const HomePage = () => {
   const { isAuthenticated } = useAuth();
-  const { isOpen, horaApertura, horaCierre } = useStoreHours();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authInitialTab, setAuthInitialTab] = useState('register');
 
@@ -205,75 +203,52 @@ const HomePage = () => {
           </div>
         </section>
 
-        {/* Location & Social Media Section */}
-        <section className="py-24 bg-[#1a1a1a] flex-1">
+        {/* Location & Social Media Section — sólo dirección + redes */}
+        <section className="py-20 bg-[#1a1a1a] flex-1">
           <div className="container mx-auto px-4 flex flex-col items-center text-center">
-            
-            {/* Status Indicator */}
+
+            {/* Dirección del local */}
             <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              whileInView={{ opacity: 1, scale: 1 }}
+              initial={{ opacity: 0, y: 10 }}
+              whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
-              className="mb-8 font-black uppercase tracking-widest text-sm md:text-base bg-background/20 px-6 py-2 rounded-full shadow-inner flex items-center justify-center gap-3"
+              className="mb-10"
             >
-              {isOpen ? (
-                <span className="text-[#22c55e] flex items-center gap-2">
-                  <span className="text-[10px]">●</span> ABIERTO
-                </span>
-              ) : (
-                <span className="text-[#ef4444] flex items-center gap-2">
-                  <span className="text-[10px]">●</span> CERRADO
-                </span>
-              )}
-              {horaApertura && horaCierre && (
-                <span className="text-muted-foreground text-xs md:text-sm tabular-nums font-bold normal-case tracking-wide">
-                  {horaApertura} – {horaCierre}
-                </span>
-              )}
+              <p className="text-white text-lg md:text-2xl font-bold tracking-wide">
+                Juan de Garay 2189, Coronda, Santa Fe
+              </p>
             </motion.div>
-            
-            {/* Location Info */}
-            <motion.div 
+
+            {/* Social Icons */}
+            <motion.div
               initial={{ opacity: 0, y: 10 }}
               whileInView={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
               viewport={{ once: true }}
-              className="space-y-3 mb-12"
-            >
-              <p className="text-white text-lg md:text-2xl font-bold tracking-wide">Av. Ejemplo 123, Coronda, Santa Fe</p>
-              <p className="text-gray-400 font-medium md:text-lg">Lun a Dom · 20:30 a 23:00</p>
-            </motion.div>
-
-            {/* Social Icons */}
-            <motion.div 
-              initial={{ opacity: 0, y: 10 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}
-              viewport={{ once: true }}
               className="flex flex-row justify-center items-center gap-6 md:gap-8"
             >
-              <a 
-                href="https://instagram.com/drip_burgerr" 
-                target="_blank" 
-                rel="noopener noreferrer" 
+              <a
+                href="https://instagram.com/drip_burgerr"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="p-4 bg-white/5 rounded-full hover:bg-white/10 hover:-translate-y-1 transition-all duration-300"
                 aria-label="Instagram"
               >
                 <Instagram className="w-7 h-7 md:w-8 md:h-8 text-[#F5A800]" />
               </a>
-              <a 
-                href="https://wa.me/5493425245092" 
-                target="_blank" 
-                rel="noopener noreferrer" 
+              <a
+                href="https://wa.me/5493425245092"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="p-4 bg-white/5 rounded-full hover:bg-white/10 hover:-translate-y-1 transition-all duration-300"
                 aria-label="WhatsApp"
               >
                 <MessageCircle className="w-7 h-7 md:w-8 md:h-8 text-[#F5A800]" />
               </a>
-              <a 
-                href="https://maps.google.com/?q=Coronda,SantaFe" 
-                target="_blank" 
-                rel="noopener noreferrer" 
+              <a
+                href="https://maps.google.com/?q=Juan+de+Garay+2189,+Coronda,+Santa+Fe"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="p-4 bg-white/5 rounded-full hover:bg-white/10 hover:-translate-y-1 transition-all duration-300"
                 aria-label="Google Maps"
               >

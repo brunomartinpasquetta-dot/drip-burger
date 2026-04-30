@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 import { useCart } from '@/contexts/CartContext.jsx';
+import { useStoreHours } from '@/hooks/useStoreHours';
 import { Menu, X, ShoppingCart, User, LogOut, LayoutDashboard, LineChart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -16,6 +17,7 @@ import AuthModal from '@/components/AuthModal.jsx';
 const Header = () => {
   const { isAuthenticated, isAdmin, currentUser, logout } = useAuth();
   const { getCartCount } = useCart();
+  const { isOpen, horaApertura, horaCierre } = useStoreHours();
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -28,7 +30,7 @@ const Header = () => {
     <>
       <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex h-14 items-center justify-between">
+          <div className="relative flex h-14 items-center justify-between">
             <div className="flex items-center gap-2 sm:gap-3">
               <Link to="/" className="flex items-center space-x-2">
                 <img
@@ -49,9 +51,29 @@ const Header = () => {
               </div>
             </div>
 
-            {/* Desktop Navigation — el link Menú se movió a la HomePage (botón + carousel).
-                Reportes vive dentro del panel admin. Este nav queda vacío por ahora. */}
-            <nav className="hidden md:flex items-center space-x-8" />
+            {/* Center: días de atención + estado abierto/cerrado + horarios */}
+            <div className="hidden md:flex absolute left-1/2 -translate-x-1/2 items-center gap-2 text-center">
+              <span className="text-xs font-black uppercase tracking-widest text-foreground/80">
+                Viernes a Domingos
+              </span>
+              <span className="text-foreground/30">·</span>
+              {isOpen ? (
+                <span className="inline-flex items-center gap-1 text-[#22c55e] text-xs font-black uppercase tracking-widest">
+                  <span className="text-[8px]">●</span>
+                  Abierto
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-[#ef4444] text-xs font-black uppercase tracking-widest">
+                  <span className="text-[8px]">●</span>
+                  Cerrado
+                </span>
+              )}
+              {horaApertura && horaCierre && (
+                <span className="text-[11px] font-bold tabular-nums text-muted-foreground">
+                  {horaApertura}–{horaCierre}
+                </span>
+              )}
+            </div>
 
             {/* Global Actions Container (Mobile + Desktop) */}
             <div className="flex items-center space-x-2 sm:space-x-3">
