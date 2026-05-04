@@ -184,6 +184,15 @@ const CartPage = () => {
       try {
         const res = await apiServerClient.fetch('/slots/availability');
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        // Defensa: si la API no responde JSON (otro server en VITE_API_URL),
+        // res.json() tira SyntaxError. Detectamos por content-type. NO bloqueamos
+        // el checkout — sin disponibilidad de slots simplemente no mostramos
+        // los chips "Sin lugar / Últimos N", el cliente puede igual elegir slot.
+        const ctype = res.headers.get('content-type') || '';
+        if (!ctype.includes('application/json')) {
+          console.warn('[CartPage] slot availability: API no responde JSON (¿API caída o VITE_API_URL mal apuntada?)');
+          return;
+        }
         const data = await res.json();
         if (!mounted) return;
         setSlotAvailability(data.slots || []);
@@ -292,6 +301,10 @@ const CartPage = () => {
         ? TAKE_AWAY_SENTINEL
         : formData.direccion;
 
+      // Payload base con campos que SIEMPRE existen en el schema. Los
+      // opcionales (takeAway, clienteId) se agregan abajo SÓLO si aplican,
+      // así si una migración no se aplicó todavía en PB, el pedido no se
+      // rechaza por validation_value_invalid.
       const orderData = {
         nombre_apellido: nombreCompleto,
         // Persistimos siempre el teléfono normalizado (formato 549XXXXXXXXXX)
@@ -299,7 +312,6 @@ const CartPage = () => {
         // lo escribió el cliente en el form.
         telefono: phoneNormalized,
         direccion: direccionFinal,
-        takeAway: !!formData.takeAway,
         customerName: nombreCompleto,
         customerPhone: phoneNormalized,
         customerAddress: direccionFinal,
@@ -325,6 +337,12 @@ const CartPage = () => {
         paymentStatus: 'Pendiente',
         orderStatus: 'Pendiente'
       };
+
+      // takeAway: sólo agregamos si es true. Evita rechazo de PB si la
+      // migración 1777300000 no se aplicó (campo no existe).
+      if (formData.takeAway) {
+        orderData.takeAway = true;
+      }
 
       if (currentUser?.id) {
         // user_id mapea al user staff legacy; clienteId mapea a la collection
@@ -369,8 +387,22 @@ const CartPage = () => {
       clearCart();
       navigate(`/confirmacion/${order.id}`, { state: { order } });
     } catch (error) {
+      // Surface el campo que falla la validación de PB para que el admin
+      // pueda diagnosticar (ej: "clienteId no existe en schema" → falta migrar).
       console.error('Order creation failed:', error?.response?.data || error);
-      toast.error('Error al crear el pedido. Por favor intentá de nuevo.');
+      const detail = error?.response?.data;
+      let userMsg = 'Error al crear el pedido. Por favor intentá de nuevo.';
+      if (detail?.data && typeof detail.data === 'object') {
+        const fields = Object.entries(detail.data)
+          .map(([k, v]) => `${k}: ${v?.message || v?.code || JSON.stringify(v)}`)
+          .join(' · ');
+        if (fields) userMsg = `Pedido rechazado por: ${fields}`;
+      } else if (detail?.message) {
+        userMsg = `Pedido rechazado: ${detail.message}`;
+      } else if (error?.message) {
+        userMsg = `Error: ${error.message}`;
+      }
+      toast.error(userMsg);
       setIsSubmitting(false);
     }
   };

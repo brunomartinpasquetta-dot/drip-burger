@@ -377,13 +377,30 @@ const TransferenciaCard = () => {
         transferencia_alias: alias.trim(),
         transferencia_cbu: cbu.trim(),
       };
+      let updated;
       if (settingsId) {
-        await pb.collection('settings').update(settingsId, data, { requestKey: null });
+        updated = await pb.collection('settings').update(settingsId, data, { requestKey: null });
       } else {
-        const created = await pb.collection('settings').create(data, { requestKey: null });
-        setSettingsId(created.id);
+        updated = await pb.collection('settings').create(data, { requestKey: null });
+        setSettingsId(updated.id);
       }
-      toast.success('Datos de transferencia guardados');
+      // Verificación: PB ignora silenciosamente campos que no existen en el
+      // schema. Si la migración 1777500001 no se aplicó, los campos quedan
+      // descartados aunque el update no tira error. Detectamos eso comparando
+      // los valores devueltos contra los que mandamos.
+      const persisted =
+        updated?.transferencia_titular === data.transferencia_titular &&
+        updated?.transferencia_alias === data.transferencia_alias &&
+        updated?.transferencia_cbu === data.transferencia_cbu;
+      if (!persisted) {
+        toast.error(
+          'PocketBase no aceptó los campos de transferencia. Falta aplicar la migración 1777500001 (reiniciá el container de PB).',
+          { duration: 8000 }
+        );
+        console.warn('[TransferenciaCard] schema desincronizado:', { sent: data, received: updated });
+      } else {
+        toast.success('Datos de transferencia guardados');
+      }
     } catch (err) {
       console.error('[TransferenciaCard] save failed:', err);
       toast.error('Error al guardar: ' + (err?.message || err));
