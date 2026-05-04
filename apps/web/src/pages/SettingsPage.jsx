@@ -315,6 +315,172 @@ const OperacionCard = () => {
 };
 
 // ══════════════════════════════════════════════════════════════════
+//  Transferencia bancaria — datos que se le muestran al cliente al
+//  elegir "Transferencia bancaria" como forma de pago.
+//  Validaciones: CBU exacto 22 dígitos, alias mínimo 6 alfanuméricos.
+// ══════════════════════════════════════════════════════════════════
+const TransferenciaCard = () => {
+  const { isAuthReady, currentUser } = useAuth();
+  const [settingsId, setSettingsId] = useState(null);
+  const [titular, setTitular] = useState('');
+  const [alias, setAlias] = useState('');
+  const [cbu, setCbu] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!isAuthReady || !currentUser) return;
+    let mounted = true;
+    (async () => {
+      try {
+        const res = await pb.collection('settings').getList(1, 1, { requestKey: null });
+        if (!mounted) return;
+        if (res.items.length > 0) {
+          const rec = res.items[0];
+          setSettingsId(rec.id);
+          setTitular(rec.transferencia_titular || '');
+          setAlias(rec.transferencia_alias || '');
+          setCbu(rec.transferencia_cbu || '');
+        }
+      } catch (err) {
+        console.error('[TransferenciaCard] load failed:', err);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [isAuthReady, currentUser]);
+
+  const cbuValid = /^\d{22}$/.test(cbu);
+  const aliasValid = /^[A-Za-z0-9.\-_]{6,}$/.test(alias);
+  const titularValid = titular.trim().length >= 3;
+  const allValid = !cbu && !alias && !titular ? true : (cbuValid && aliasValid && titularValid);
+  const someEmpty = !cbu || !alias || !titular;
+
+  const handleSave = async () => {
+    if (cbu && !cbuValid) {
+      toast.error('CBU debe tener exactamente 22 dígitos numéricos.');
+      return;
+    }
+    if (alias && !aliasValid) {
+      toast.error('Alias debe ser mínimo 6 caracteres alfanuméricos (./-/_).');
+      return;
+    }
+    if (titular && !titularValid) {
+      toast.error('Titular debe tener al menos 3 caracteres.');
+      return;
+    }
+    setSaving(true);
+    try {
+      const data = {
+        transferencia_titular: titular.trim(),
+        transferencia_alias: alias.trim(),
+        transferencia_cbu: cbu.trim(),
+      };
+      if (settingsId) {
+        await pb.collection('settings').update(settingsId, data, { requestKey: null });
+      } else {
+        const created = await pb.collection('settings').create(data, { requestKey: null });
+        setSettingsId(created.id);
+      }
+      toast.success('Datos de transferencia guardados');
+    } catch (err) {
+      console.error('[TransferenciaCard] save failed:', err);
+      toast.error('Error al guardar: ' + (err?.message || err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <Skeleton className="h-48 w-full rounded-xl" />;
+
+  const borderCls = someEmpty
+    ? 'border-l-yellow-500'
+    : (allValid ? 'border-l-green-500' : 'border-l-red-500');
+
+  return (
+    <div className={`bg-card border border-border border-l-[6px] ${borderCls} rounded-lg overflow-hidden shadow-sm`}>
+      <div className="flex items-center justify-between gap-3 p-4 pb-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <CreditCard className="w-5 h-5 text-primary shrink-0" />
+          <h3 className="text-lg sm:text-xl font-black uppercase tracking-tight">Transferencia bancaria</h3>
+        </div>
+        {someEmpty ? (
+          <span className="text-[10px] font-black uppercase tracking-wide text-yellow-500">● Sin configurar</span>
+        ) : allValid ? (
+          <span className="text-[10px] font-black uppercase tracking-wide text-green-500">● Activa</span>
+        ) : (
+          <span className="text-[10px] font-black uppercase tracking-wide text-red-500">● Datos inválidos</span>
+        )}
+      </div>
+
+      <div className="px-4 pb-3 space-y-3">
+        <div className="space-y-1">
+          <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Titular de la cuenta</label>
+          <Input
+            type="text"
+            value={titular}
+            onChange={(e) => setTitular(e.target.value)}
+            placeholder="Nombre y apellido del titular"
+            className="bg-background border-border text-foreground h-10 text-sm"
+          />
+          {titular && !titularValid && (
+            <p className="text-[10px] font-bold text-red-400">Mínimo 3 caracteres.</p>
+          )}
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Alias</label>
+          <Input
+            type="text"
+            value={alias}
+            onChange={(e) => setAlias(e.target.value.replace(/\s/g, ''))}
+            placeholder="ej: drip.burger.ar"
+            className="bg-background border-border text-foreground h-10 text-sm font-mono"
+          />
+          {alias && !aliasValid && (
+            <p className="text-[10px] font-bold text-red-400">Mínimo 6 alfanuméricos (puntos, guiones y guion bajo permitidos).</p>
+          )}
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">CBU (22 dígitos)</label>
+          <Input
+            type="text"
+            inputMode="numeric"
+            maxLength={22}
+            value={cbu}
+            onChange={(e) => setCbu(e.target.value.replace(/\D/g, ''))}
+            placeholder="22 dígitos sin espacios ni guiones"
+            className="bg-background border-border text-foreground h-10 text-sm font-mono tabular-nums"
+          />
+          {cbu && !cbuValid && (
+            <p className="text-[10px] font-bold text-red-400">{cbu.length}/22 dígitos.</p>
+          )}
+          {cbu && cbuValid && (
+            <p className="text-[10px] font-bold text-green-500">✓ 22 dígitos válidos.</p>
+          )}
+        </div>
+      </div>
+
+      <div className="px-4 py-3 border-t border-border">
+        <Button
+          onClick={handleSave}
+          disabled={saving}
+          size="sm"
+          className="btn-primary h-10 px-4 text-xs font-black uppercase tracking-wide shadow-sm"
+        >
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Save className="mr-1 h-4 w-4" />Guardar datos</>}
+        </Button>
+        <p className="text-[10px] text-muted-foreground font-medium mt-2">
+          Estos datos se le muestran al cliente cuando elige "Transferencia bancaria" como forma de pago.
+        </p>
+      </div>
+    </div>
+  );
+};
+
+// ══════════════════════════════════════════════════════════════════
 //  Impresora — usa el sistema de impresión del SO (window.print()).
 //  Compatible con cualquier impresora instalada (térmica 80mm, A4,
 //  red, WiFi). No requiere drivers especiales en el navegador.
@@ -915,6 +1081,7 @@ export const SettingsContent = () => {
   return (
     <div className="space-y-4">
       <OperacionCard />
+      <TransferenciaCard />
       <PrinterCard />
       <div className="pt-2">
         <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-2 px-1">Integraciones</p>

@@ -25,6 +25,98 @@ const formatPrice = (price) => {
   return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(price || 0);
 };
 
+// Bloque de datos de transferencia bancaria mostrado al cliente cuando elige
+// "Transferencia bancaria". Lee titular/alias/cbu del singleton settings.
+// Cada campo es copiable con un click.
+const BankTransferDetails = () => {
+  const [data, setData] = useState({ titular: '', alias: '', cbu: '' });
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const res = await pb.collection('settings').getList(1, 1, { requestKey: null });
+        if (!mounted) return;
+        if (res.items.length > 0) {
+          const r = res.items[0];
+          setData({
+            titular: r.transferencia_titular || '',
+            alias: r.transferencia_alias || '',
+            cbu: r.transferencia_cbu || '',
+          });
+        }
+      } catch (e) { /* noop */ }
+      finally { if (mounted) setLoading(false); }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  const copy = (value, label) => {
+    if (!value) return;
+    navigator.clipboard?.writeText(value);
+    toast.success(`${label} copiado`);
+  };
+
+  if (loading) return <Skeleton className="h-32 w-full mt-2" />;
+  if (!data.cbu && !data.alias && !data.titular) {
+    return (
+      <p className="text-[10px] text-amber-400 font-bold uppercase tracking-wider mt-1">
+        ⚠ Datos de transferencia no configurados todavía. Avisá al local.
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-2 p-3 rounded-lg border-2 border-primary/40 bg-primary/5 space-y-2">
+      <p className="text-[10px] font-black uppercase tracking-widest text-primary mb-1">
+        Datos para transferir
+      </p>
+      {data.titular && (
+        <button
+          type="button"
+          onClick={() => copy(data.titular, 'Titular')}
+          className="w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded bg-background border border-border hover:border-primary/50 transition-colors"
+        >
+          <div className="text-left min-w-0">
+            <div className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Titular</div>
+            <div className="text-sm font-bold truncate">{data.titular}</div>
+          </div>
+          <span className="text-[10px] text-muted-foreground">📋</span>
+        </button>
+      )}
+      {data.alias && (
+        <button
+          type="button"
+          onClick={() => copy(data.alias, 'Alias')}
+          className="w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded bg-background border border-border hover:border-primary/50 transition-colors"
+        >
+          <div className="text-left min-w-0">
+            <div className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Alias</div>
+            <div className="text-sm font-bold font-mono truncate">{data.alias}</div>
+          </div>
+          <span className="text-[10px] text-muted-foreground">📋</span>
+        </button>
+      )}
+      {data.cbu && (
+        <button
+          type="button"
+          onClick={() => copy(data.cbu, 'CBU')}
+          className="w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded bg-background border border-border hover:border-primary/50 transition-colors"
+        >
+          <div className="text-left min-w-0">
+            <div className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">CBU</div>
+            <div className="text-sm font-bold font-mono tabular-nums truncate">{data.cbu}</div>
+          </div>
+          <span className="text-[10px] text-muted-foreground">📋</span>
+        </button>
+      )}
+      <p className="text-[10px] text-muted-foreground font-medium leading-relaxed pt-1 border-t border-primary/20">
+        Hacé la transferencia y al confirmar el pedido el local va a validar el pago manualmente.
+      </p>
+    </div>
+  );
+};
+
 const CartPage = () => {
   const { currentUser, isAuthenticated } = useAuth();
   const { cartItems, updateQuantity, removeFromCart, getCartTotal, clearCart } = useCart();
@@ -654,13 +746,17 @@ const CartPage = () => {
                     </SelectTrigger>
                     <SelectContent className="bg-card border-border">
                       <SelectItem value="Efectivo" className="font-bold uppercase focus:bg-primary/20 focus:text-primary">Efectivo al recibir</SelectItem>
-                      <SelectItem value="Transferencia" className="font-bold uppercase focus:bg-primary/20 focus:text-primary">Pagar online</SelectItem>
+                      <SelectItem value="Transferencia" className="font-bold uppercase focus:bg-primary/20 focus:text-primary">Pagar online (Mercado Pago)</SelectItem>
+                      <SelectItem value="TransferenciaBancaria" className="font-bold uppercase focus:bg-primary/20 focus:text-primary">Transferencia bancaria</SelectItem>
                     </SelectContent>
                   </Select>
                   {formData.forma_pago === 'Transferencia' && (
                     <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mt-1">
                       Tarjeta, transferencia o Mercado Pago
                     </p>
+                  )}
+                  {formData.forma_pago === 'TransferenciaBancaria' && (
+                    <BankTransferDetails />
                   )}
                 </div>
               </div>
@@ -741,7 +837,11 @@ const CartPage = () => {
                       ? 'Procesando...'
                       : !storeIsOpen && !hoursLoading
                         ? 'Cerrado — No se puede pedir'
-                        : (formData.forma_pago === 'Transferencia' ? 'Pagar' : 'Hacer Pedido')}
+                        : (formData.forma_pago === 'Transferencia'
+                            ? 'Pagar'
+                            : formData.forma_pago === 'TransferenciaBancaria'
+                              ? 'Confirmar pedido'
+                              : 'Hacer Pedido')}
                   </Button>
 
                   <Button asChild variant="outline" className="w-full h-12 font-bold uppercase tracking-widest bg-transparent border-border hover:bg-muted text-foreground">

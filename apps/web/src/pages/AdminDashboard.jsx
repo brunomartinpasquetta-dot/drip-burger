@@ -666,9 +666,16 @@ const CajaCard = ({ currentUserId, jornada, jornadaLoading, refreshKey, onJornad
   const cobrosEfectivo = activeOrders
     .filter((o) => o.paymentMethod === FORMA_PAGO.CASH && o.paymentStatus === PAYMENT_STATUS.PAID)
     .reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
-  const cobrosTransferencia = activeOrders
-    .filter((o) => o.paymentMethod === FORMA_PAGO.TRANSFER && o.paymentStatus === PAYMENT_STATUS.PAID)
+  // Cobros online vía Mercado Pago (value histórico "Transferencia")
+  const cobrosMercadopago = activeOrders
+    .filter((o) => o.paymentMethod === FORMA_PAGO.MERCADOPAGO && o.paymentStatus === PAYMENT_STATUS.PAID)
     .reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
+  // Cobros por transferencia bancaria manual (admin valida con CBU/alias)
+  const cobrosTransferenciaBancaria = activeOrders
+    .filter((o) => o.paymentMethod === FORMA_PAGO.TRANSFERENCIA_BANCARIA && o.paymentStatus === PAYMENT_STATUS.PAID)
+    .reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
+  // Total no-efectivo (suma MP + transferencia bancaria) — útil para resumen
+  const cobrosTransferencia = cobrosMercadopago + cobrosTransferenciaBancaria;
   const ingresosManuales = movimientos
     .filter((m) => m.tipo === 'ingreso')
     .reduce((sum, m) => sum + (Number(m.monto) || 0), 0);
@@ -892,7 +899,8 @@ const CajaCard = ({ currentUserId, jornada, jornadaLoading, refreshKey, onJornad
         {/* Resumen en vivo */}
         <div className="px-5 py-4 space-y-2 bg-background/30">
           <SummaryRow label="Cobros efectivo" value={cobrosEfectivo} colorCls="text-green-500" signo="+ " />
-          <SummaryRow label="Cobros transferencia" value={cobrosTransferencia} colorCls="text-blue-400" signo="" />
+          <SummaryRow label="Cobros Mercado Pago" value={cobrosMercadopago} colorCls="text-blue-400" signo="" />
+          <SummaryRow label="Cobros transferencia bancaria" value={cobrosTransferenciaBancaria} colorCls="text-cyan-400" signo="" />
           <SummaryRow label="Ingresos manuales" value={ingresosManuales} colorCls="text-green-500" signo="+ " />
           <SummaryRow label="Egresos manuales" value={egresosManuales} colorCls="text-red-500" signo="− " />
           <div className="border-t border-border pt-2 flex items-baseline justify-between gap-3">
@@ -1524,14 +1532,24 @@ const AdminDashboard = () => {
   const handleUpdateOrderStatus = async (orderId, status) => {
     if (!requireAuth()) return;
     if (!requireJornada()) return;
+    // Pre-flight: bloqueo finalizar sin cobro confirmado (mismo error que el
+    // hook PB pero con mensaje claro al admin antes del round-trip al server).
+    if (status === ORDER_STATUS.COMPLETED) {
+      const current = orders.find((o) => o.id === orderId);
+      if (current && current.paymentStatus !== PAYMENT_STATUS.PAID) {
+        toast.error('No se puede finalizar un pedido sin cobro confirmado.');
+        return;
+      }
+    }
     markPending(orderId, true);
     try {
       const updated = await pb.collection('orders').update(orderId, { orderStatus: status }, { requestKey: null });
       setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...updated } : o));
       toast.success(`Pedido actualizado a ${status}`);
     } catch (error) {
+      const msg = error?.response?.data?.message || error?.message || 'Error al actualizar el pedido';
       console.error('[handleUpdateOrderStatus] failed:', { orderId, status: error?.status, data: error?.response?.data });
-      toast.error(`Error al actualizar el pedido (${error?.status || 'sin status'})`);
+      toast.error(msg);
     } finally {
       markPending(orderId, false);
     }
@@ -1572,7 +1590,10 @@ const AdminDashboard = () => {
         url: error?.url,
         data: error?.response?.data,
       });
-      toast.error(`Error al marcar como pagado (${error?.status || 'sin status'})`);
+      // Surface el error real del hook PB (ej: "No hay jornada de caja
+      // abierta. Abrí una jornada antes de validar pagos.")
+      const msg = error?.response?.data?.message || error?.message || 'Error al marcar como pagado';
+      toast.error(msg);
     } finally {
       markPending(orderId, false);
     }
@@ -1876,9 +1897,12 @@ const AdminDashboard = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
                   {sortedOrders.map(order => {
                     const isPaid = order.paymentStatus === PAYMENT_STATUS.PAID;
-                    const isTransfer = order.paymentMethod === 'Transferencia';
-                    const cashPending = order.paymentMethod === 'Efectivo' && !isPaid;
-                    const transferPending = isTransfer && !isPaid;
+                    // "Transferencia" en el value = Mercado Pago (legacy nombre)
+                    const isMercadopago = order.paymentMethod === FORMA_PAGO.MERCADOPAGO;
+                    const isTransferenciaBancaria = order.paymentMethod === FORMA_PAGO.TRANSFERENCIA_BANCARIA;
+                    const cashPending = order.paymentMethod === FORMA_PAGO.CASH && !isPaid;
+                    const mpPending = isMercadopago && !isPaid;
+                    const bankPending = isTransferenciaBancaria && !isPaid;
                     const borderCls = STATUS_BORDER_COLOR[order.orderStatus] || STATUS_BORDER_COLOR[ORDER_STATUS.PENDING];
                     const isProcessing = isPending(order.id);
                     const isCancelled = order.orderStatus === ORDER_STATUS.CANCELLED;
@@ -1949,8 +1973,10 @@ const AdminDashboard = () => {
                           </div>
                         ) : (
                         <div className="flex items-stretch gap-1 pt-1 border-t border-border">
-                          {/* Bloque de pago: varía según forma_pago y paymentStatus */}
-                          {transferPending ? (
+                          {/* Bloque de pago: varía según paymentMethod y paymentStatus.
+                              - MP pendiente: esperamos webhook (no clickeable).
+                              - Efectivo / Transferencia bancaria pendientes: admin valida con click. */}
+                          {mpPending ? (
                             <div className="flex-1 h-10 flex items-center justify-center rounded-md bg-amber-500/15 border border-amber-500/40 px-2">
                               <Clock className="w-3 h-3 text-amber-400 mr-1.5 shrink-0" />
                               <span className="text-[10px] text-amber-400 font-black uppercase tracking-wide truncate">
@@ -1960,16 +1986,26 @@ const AdminDashboard = () => {
                           ) : (
                             <Button
                               onClick={() => handleMarkPaid(order.id)}
-                              disabled={!cashPending || isProcessing}
+                              disabled={!(cashPending || bankPending) || isProcessing}
                               size="sm"
                               className={`flex-1 h-10 shadow-sm text-[10px] font-black uppercase tracking-wide ${
                                 cashPending
                                   ? 'bg-green-500 hover:bg-green-600 text-black border-0'
-                                  : 'bg-green-500/20 text-green-400 border border-green-500/40 disabled:opacity-100'
+                                  : bankPending
+                                    ? 'bg-cyan-500 hover:bg-cyan-600 text-black border-0'
+                                    : 'bg-green-500/20 text-green-400 border border-green-500/40 disabled:opacity-100'
                               }`}
                             >
                               <Banknote className="mr-1 h-3 w-3" />
-                              {cashPending ? 'Cobrar' : (isTransfer ? '✓ Pagado MP' : '✓ Cobrado')}
+                              {cashPending
+                                ? 'Cobrar'
+                                : bankPending
+                                  ? 'Validar transf.'
+                                  : (isMercadopago
+                                      ? '✓ Pagado MP'
+                                      : isTransferenciaBancaria
+                                        ? '✓ Transf. validada'
+                                        : '✓ Cobrado')}
                             </Button>
                           )}
 
