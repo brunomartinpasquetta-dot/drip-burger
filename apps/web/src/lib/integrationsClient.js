@@ -42,11 +42,24 @@ const callApi = async (path, { method = 'GET', body } = {}) => {
         },
         body: body ? JSON.stringify(body) : undefined,
     });
+    // Defensa: si el endpoint apunta a un server equivocado (ej: VITE_API_URL
+    // a un Vite de otro proyecto en el mismo puerto) la response es HTML y
+    // res.json() falla. Antes devolvíamos null silencioso y los componentes
+    // crasheaban con "Cannot read properties of null". Ahora tiramos error
+    // explícito así los cards muestran "No se pudo cargar..." en vez de blanco.
+    const ctype = res.headers.get('content-type') || '';
+    if (!ctype.includes('application/json')) {
+        const error = new Error('La API no responde JSON. Verificá que el server esté corriendo en VITE_API_URL.');
+        error.status = res.status;
+        throw error;
+    }
     let data = null;
     try {
         data = await res.json();
     } catch (e) {
-        data = null;
+        const error = new Error('Respuesta inválida de la API');
+        error.status = res.status;
+        throw error;
     }
     if (!res.ok) {
         const error = new Error(data?.error || `HTTP ${res.status}`);

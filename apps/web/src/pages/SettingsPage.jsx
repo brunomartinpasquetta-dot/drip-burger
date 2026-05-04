@@ -597,10 +597,11 @@ const WhatsAppCard = () => {
   const load = useCallback(async () => {
     try {
       const res = await waStatus();
-      setData(res);
+      setData(res || null);
     } catch (err) {
       console.error('[WhatsAppCard] status failed:', err);
       toast.error(`Error al leer estado de WhatsApp: ${err.message}`);
+      setData(null);
     } finally {
       setLoading(false);
     }
@@ -849,14 +850,20 @@ const MercadoPagoCard = () => {
   const load = useCallback(async () => {
     try {
       const res = await mpStatus();
-      setData(res);
-      setForm(f => ({
-        ...f,
-        publicKey: res.publicKey || '',
-      }));
+      // Defensa: si la API responde algo raro y res es null/undefined,
+      // dejamos data en null (el render muestra el card de error) y no
+      // intentamos leer publicKey de una respuesta inválida.
+      setData(res || null);
+      if (res) {
+        setForm(f => ({
+          ...f,
+          publicKey: res.publicKey || '',
+        }));
+      }
     } catch (err) {
       console.error('[MercadoPagoCard] status failed:', err);
       toast.error(`Error al leer estado de MP: ${err.message}`);
+      setData(null);
     } finally {
       setLoading(false);
     }

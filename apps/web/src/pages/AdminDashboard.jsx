@@ -3,7 +3,7 @@ import { Helmet } from 'react-helmet';
 import { Link, useNavigate } from 'react-router-dom';
 import pb from '@/lib/pocketbaseClient';
 import apiServerClient from '@/lib/apiServerClient';
-import { ORDER_STATUS, PAYMENT_STATUS, FORMA_PAGO, MEDALLION_LABELS } from '@/lib/orderConstants';
+import { ORDER_STATUS, PAYMENT_STATUS, FORMA_PAGO, MEDALLION_LABELS, FORMA_PAGO_LABELS_SHORT, normalizeOrderStatus } from '@/lib/orderConstants';
 import Header from '@/components/Header.jsx';
 import ProductForm from '@/components/ProductForm.jsx';
 import ImageUploadButton from '@/components/ImageUploadButton.jsx';
@@ -1399,7 +1399,15 @@ const AdminDashboard = () => {
       ]);
       setProducts(productsData);
       setCustomers(customersData);
-      setOrders(ordersData);
+      // Normalizamos orderStatus al leer para que orders viejos con valores
+      // legacy ("En camino", "Finalizado") matcheen los filtros y la lógica
+      // de botones que usa los nombres nuevos ("Enviado", "Entregado").
+      // La migración 1777600000 los renombra en PB; este normalize es la
+      // red de seguridad mientras la migración se aplica.
+      setOrders(ordersData.map((o) => ({
+        ...o,
+        orderStatus: normalizeOrderStatus(o.orderStatus),
+      })));
       setLastUpdated(new Date());
     } catch (error) {
       console.error('[AdminDashboard] loadData failed:', error);
@@ -1942,9 +1950,15 @@ const AdminDashboard = () => {
                           <p className={`text-sm font-black uppercase tracking-tight leading-tight break-words min-w-0 flex-1 ${isCancelled ? 'line-through' : ''}`}>
                             {order.customerName || 'Sin nombre'}
                           </p>
-                          <p className={`text-sm font-black leading-none tabular-nums shrink-0 ${isCancelled ? 'text-muted-foreground line-through' : 'text-primary'}`}>
-                            {formatPrice(order.totalAmount)}
-                          </p>
+                          <div className="shrink-0 text-right">
+                            <p className={`text-sm font-black leading-none tabular-nums ${isCancelled ? 'text-muted-foreground line-through' : 'text-primary'}`}>
+                              {formatPrice(order.totalAmount)}
+                            </p>
+                            {/* Forma de pago en label chico debajo del monto */}
+                            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mt-0.5 leading-none">
+                              {FORMA_PAGO_LABELS_SHORT[order.paymentMethod] || order.paymentMethod || '—'}
+                            </p>
+                          </div>
                         </div>
 
                         {/* Row 2: teléfono + dirección o badge Take Away */}
@@ -2028,19 +2042,31 @@ const AdminDashboard = () => {
                             </Button>
                           )}
 
-                          {/* PENDIENTE: esperando que cocina tome el pedido */}
+                          {/* PENDIENTE → botón EN PREPARACIÓN (manda a cocina) */}
                           {(!order.orderStatus || order.orderStatus === ORDER_STATUS.PENDING) && (
-                            <div className="flex-1 h-10 flex items-center justify-center rounded-md bg-yellow-500/10 border border-yellow-500/30">
-                              <span className="text-[10px] text-yellow-500 font-black uppercase tracking-wide">Esperando cocina</span>
-                            </div>
+                            <Button
+                              onClick={() => handleUpdateOrderStatus(order.id, ORDER_STATUS.COOKING)}
+                              disabled={isProcessing}
+                              size="sm"
+                              className="flex-1 h-10 bg-blue-500 hover:bg-blue-600 text-white text-[10px] font-black uppercase tracking-wide shadow-sm border-0"
+                            >
+                              <ChefHat className="mr-1 h-3 w-3" />
+                              {isProcessing ? '...' : 'En preparación'}
+                            </Button>
                           )}
-                          {/* EN PREPARACIÓN: cocinero está trabajando */}
+                          {/* EN PREPARACIÓN → botón MARCAR LISTO */}
                           {order.orderStatus === ORDER_STATUS.COOKING && (
-                            <div className="flex-1 h-10 flex items-center justify-center rounded-md bg-blue-500/10 border border-blue-500/30">
-                              <span className="text-[10px] text-blue-400 font-black uppercase tracking-wide">Cocinando...</span>
-                            </div>
+                            <Button
+                              onClick={() => handleUpdateOrderStatus(order.id, ORDER_STATUS.READY)}
+                              disabled={isProcessing}
+                              size="sm"
+                              className="flex-1 h-10 bg-cyan-500 hover:bg-cyan-600 text-black text-[10px] font-black uppercase tracking-wide shadow-sm border-0"
+                            >
+                              <CheckCircle2 className="mr-1 h-3 w-3" />
+                              {isProcessing ? '...' : 'Marcar listo'}
+                            </Button>
                           )}
-                          {/* LISTO → Imprimir ticket + En Camino + WA (la cocina ya terminó) */}
+                          {/* LISTO → Imprimir ticket + ENVIAR (cambia a SHIPPED + manda WhatsApp) */}
                           {order.orderStatus === ORDER_STATUS.READY && (
                             <>
                               <Button
@@ -2060,23 +2086,24 @@ const AdminDashboard = () => {
                                 className="btn-primary flex-1 h-10 shadow-sm text-[10px] font-black uppercase tracking-wide"
                               >
                                 <Send className="mr-1 h-3 w-3" />
-                                {isProcessing ? '...' : 'En Camino'}
+                                {isProcessing ? '...' : 'Enviar'}
                               </Button>
                             </>
                           )}
-                          {order.orderStatus === ORDER_STATUS.IN_TRANSIT && (
+                          {/* ENVIADO → botón ENTREGAR */}
+                          {order.orderStatus === ORDER_STATUS.SHIPPED && (
                             <Button
-                              onClick={() => handleUpdateOrderStatus(order.id, ORDER_STATUS.COMPLETED)}
+                              onClick={() => handleUpdateOrderStatus(order.id, ORDER_STATUS.DELIVERED)}
                               disabled={isProcessing}
-                              variant="outline"
                               size="sm"
-                              className="flex-1 h-10 btn-secondary text-[10px] font-black uppercase tracking-wide"
+                              className="flex-1 h-10 bg-green-500 hover:bg-green-600 text-black text-[10px] font-black uppercase tracking-wide shadow-sm border-0"
                             >
                               <CheckCircle2 className="mr-1 h-3 w-3" />
                               {isProcessing ? '...' : 'Entregar'}
                             </Button>
                           )}
-                          {order.orderStatus === ORDER_STATUS.COMPLETED && (
+                          {/* ENTREGADO → estado final, sin botón de avance */}
+                          {order.orderStatus === ORDER_STATUS.DELIVERED && (
                             <div className="flex-1 h-10 flex items-center justify-center rounded-md bg-green-500/10 border border-green-500/30">
                               <span className="text-[10px] text-green-500 font-black uppercase tracking-wide">✓ Entregado</span>
                             </div>
