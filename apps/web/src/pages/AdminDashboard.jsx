@@ -650,6 +650,16 @@ const CajaCard = ({ currentUserId, jornada, jornadaLoading, refreshKey, onJornad
         setMovimientos(movsRes);
       } catch (err) {
         console.error('[CajaCard] data load failed:', err);
+        // Si el token está vencido/inválido (típico al cambiar de PB entre
+        // entornos), limpiamos auth para forzar re-login en lugar de spamear
+        // 400 cada 30s.
+        if (err?.status === 401 || err?.status === 403) {
+          console.warn('[CajaCard] auth inválido — limpiando authStore');
+          pb.authStore.clear();
+        } else if (err?.status === 400) {
+          // Repeated 400 with valid auth = filter probably broken. Log for diagnostico.
+          console.warn(`[CajaCard] PB 400 en filter jornadaId="${jornada.id}". Es probable que la collection orders no tenga el campo jornadaId, o el token de auth no aplique al PB actual. Revisá las migraciones aplicadas.`);
+        }
       }
     };
     loadData();
@@ -1347,6 +1357,15 @@ const AdminDashboard = () => {
       try {
         const res = await apiServerClient.fetch('/slots/availability');
         if (!res.ok) return;
+        // Defensa: si el endpoint apunta al server equivocado (ej: VITE_API_URL
+        // apunta a un Vite dev de otro proyecto en vez de la API Express),
+        // la response es HTML y res.json() tira SyntaxError. Detectamos por
+        // content-type y abortamos silencioso.
+        const ctype = res.headers.get('content-type') || '';
+        if (!ctype.includes('application/json')) {
+          console.warn('[AdminDashboard] slot occupancy: API no responde JSON (¿API caída o VITE_API_URL mal apuntada?)');
+          return;
+        }
         const data = await res.json();
         if (cancelled) return;
         if (Array.isArray(data?.slots)) setSlotOccupancy(data.slots);
