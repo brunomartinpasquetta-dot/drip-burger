@@ -152,13 +152,33 @@ const OperacionCard = () => {
         hora_cierre: horaCierre,
         maxMedallionsPerSlot: cleanMax,
       };
+      let updated;
       if (settingsId) {
-        await pb.collection('settings').update(settingsId, data, { requestKey: null });
+        updated = await pb.collection('settings').update(settingsId, data, { requestKey: null });
       } else {
-        const nueva = await pb.collection('settings').create(data, { requestKey: null });
-        setSettingsId(nueva.id);
+        updated = await pb.collection('settings').create(data, { requestKey: null });
+        setSettingsId(updated.id);
       }
-      toast.success('Configuración guardada');
+      // Validación post-save: PB descarta silenciosamente campos que no
+      // existen en el schema y devuelve 200. Comparamos cada campo que
+      // mandamos para asegurar que se persistió. Si no, alertamos al admin
+      // de schema desactualizado en lugar de mentir con "guardado".
+      const missing = Object.keys(data).filter((k) => {
+        const sent = data[k];
+        const got = updated?.[k];
+        // Tolerancia para number 0 vs string '' en campos legacy
+        if (typeof sent === 'number' && typeof got === 'number') return sent !== got;
+        return String(sent ?? '') !== String(got ?? '');
+      });
+      if (missing.length > 0) {
+        toast.error(
+          `Schema desactualizado: PB descartó los campos ${missing.join(', ')}. Reiniciá el container de PocketBase para aplicar las migraciones pendientes.`,
+          { duration: 9000 }
+        );
+        console.warn('[OperacionCard] schema desincronizado:', { sent: data, received: updated, missing });
+      } else {
+        toast.success('Configuración guardada');
+      }
     } catch (err) {
       console.error('[OperacionCard] save failed:', err?.response?.data || err);
       toast.error(`Error al guardar: ${err.message || err}`);
