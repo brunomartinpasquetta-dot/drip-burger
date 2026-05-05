@@ -633,33 +633,43 @@ const CajaCard = ({ currentUserId, jornada, jornadaLoading, refreshKey, onJornad
       return () => { cancelled = true; };
     }
     const loadData = async () => {
-      try {
-        const [ordsRes, movsRes] = await Promise.all([
-          pb.collection('orders').getFullList({
-            filter: `jornadaId = "${jornada.id}"`,
-            requestKey: null,
-          }),
-          pb.collection('movimientos_caja').getFullList({
-            filter: `jornadaId = "${jornada.id}"`,
-            sort: '-created',
-            requestKey: null,
-          }),
-        ]);
-        if (cancelled) return;
-        setJornadaOrders(ordsRes);
-        setMovimientos(movsRes);
-      } catch (err) {
-        console.error('[CajaCard] data load failed:', err);
-        // Si el token está vencido/inválido (típico al cambiar de PB entre
-        // entornos), limpiamos auth para forzar re-login en lugar de spamear
-        // 400 cada 30s.
+      // Importante: queries INDEPENDIENTES con allSettled. Antes era
+      // Promise.all y si movimientos_caja fallaba (400 por rule/token),
+      // el await abortaba ANTES de setear jornadaOrders → los cobros
+      // sumaban 0 sobre array vacío. Ahora orders es la fuente principal
+      // de cobros y movimientos sólo alimenta los ingresos/egresos manuales.
+      const [ordsResult, movsResult] = await Promise.allSettled([
+        pb.collection('orders').getFullList({
+          filter: `jornadaId = "${jornada.id}"`,
+          requestKey: null,
+        }),
+        pb.collection('movimientos_caja').getFullList({
+          filter: `jornadaId = "${jornada.id}"`,
+          sort: '-created',
+          requestKey: null,
+        }),
+      ]);
+      if (cancelled) return;
+
+      if (ordsResult.status === 'fulfilled') {
+        setJornadaOrders(ordsResult.value);
+      } else {
+        console.error('[CajaCard] orders query failed:', ordsResult.reason);
+        const err = ordsResult.reason;
         if (err?.status === 401 || err?.status === 403) {
           console.warn('[CajaCard] auth inválido — limpiando authStore');
           pb.authStore.clear();
-        } else if (err?.status === 400) {
-          // Repeated 400 with valid auth = filter probably broken. Log for diagnostico.
-          console.warn(`[CajaCard] PB 400 en filter jornadaId="${jornada.id}". Es probable que la collection orders no tenga el campo jornadaId, o el token de auth no aplique al PB actual. Revisá las migraciones aplicadas.`);
         }
+      }
+
+      if (movsResult.status === 'fulfilled') {
+        setMovimientos(movsResult.value);
+      } else {
+        // Movimientos best-effort: si falla (rule/auth/etc) los cobros
+        // de pedidos siguen sumando bien. Sólo afecta la lista de
+        // ingresos/egresos manuales que mostramos vacía.
+        console.warn('[CajaCard] movimientos query failed (best-effort):', movsResult.reason?.message);
+        setMovimientos([]);
       }
     };
     loadData();
@@ -946,7 +956,7 @@ const CajaCard = ({ currentUserId, jornada, jornadaLoading, refreshKey, onJornad
           <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">Movimientos</p>
           {movimientos.length === 0 ? (
             <p className="text-[11px] text-muted-foreground/70 font-medium italic">
-              Sin movimientos registrados
+              Sin movimientos manuales
             </p>
           ) : (
             <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
