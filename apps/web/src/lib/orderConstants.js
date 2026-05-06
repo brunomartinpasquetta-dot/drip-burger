@@ -37,92 +37,31 @@ export const PAYMENT_STATUS_LABELS = {
 };
 
 // ──────────────────────────────────────────────────────────────────
-// Forma de pago — IMPORTANTE
-//
-// El schema PB de orders.forma_pago es un SelectField con SÓLO estos
-// valores: ['Efectivo', 'Transferencia']. Cualquier otro string tira
-// validation_invalid_value al crear el pedido.
-//
-// UI distingue 3 opciones (Efectivo, Mercado Pago, Transferencia bancaria)
-// pero al submit se mapean a los 2 valores del schema. El frontend
-// distingue MP vs bank transfer mediante un campo separado de UI choice
-// (no se persiste en orders).
-//
-// Si en el futuro se aplica la migración 1777700000 que extiende el
-// select a `['Efectivo', 'Transferencia', 'Mercado Pago']`, podés migrar
-// el código a usar valores distintos sin colisión cambiando MERCADOPAGO
-// abajo a 'Mercado Pago'.
+// Forma de pago — 3 valores que coinciden EXACTAMENTE con el SelectField
+// PB de orders.forma_pago tras aplicar la migración 1777700000:
+//   ['Efectivo', 'Transferencia', 'Mercado Pago']
+// El frontend manda directo cualquiera de estos 3, sin mapeos intermedios.
 // ──────────────────────────────────────────────────────────────────
-
-// FORMA_PAGO — VALORES DEL SCHEMA (los que se persisten en PB)
 export const FORMA_PAGO = {
-  CASH: 'Efectivo',
-  // MP y Transferencia bancaria comparten value en schema actual
-  MERCADOPAGO: 'Transferencia',
-  TRANSFER: 'Transferencia',                    // alias legacy
-  TRANSFERENCIA_BANCARIA: 'Transferencia',      // alias = MERCADOPAGO en schema
-};
-
-export const FORMA_PAGO_VALUES = ['Efectivo', 'Transferencia'];
-
-// UI CHOICES — los strings con los que el usuario interactúa en el frontend.
-// Distintos de los schema values para poder distinguir MP de bank transfer.
-export const FORMA_PAGO_UI = {
   EFECTIVO: 'Efectivo',
-  MERCADOPAGO: 'MercadoPago',
-  TRANSFERENCIA_BANCARIA: 'TransferenciaBancaria',
+  TRANSFERENCIA: 'Transferencia',     // transferencia bancaria manual (CBU/alias)
+  MERCADOPAGO: 'Mercado Pago',        // pago online vía MP (webhook automático)
 };
 
-// Mapper UI choice → schema value (lo que se envía a PB en el create)
-export const uiChoiceToSchema = (uiChoice) => {
-  switch (uiChoice) {
-    case FORMA_PAGO_UI.EFECTIVO:
-      return FORMA_PAGO.CASH;
-    case FORMA_PAGO_UI.MERCADOPAGO:
-    case FORMA_PAGO_UI.TRANSFERENCIA_BANCARIA:
-      return FORMA_PAGO.TRANSFER;
-    default:
-      return uiChoice; // fallback: si ya es schema-valid lo dejamos pasar
-  }
-};
-
-// Resuelve el UI choice de un order leyendo `ui_payment_choice` si está
-// presente. Para orders viejos (anteriores a la migración 1777800000) cae
-// a heurística: efectivo → Efectivo; transferencia → MercadoPago (porque
-// históricamente el value "Transferencia" era exclusivo de MP antes de
-// agregar transferencia bancaria manual).
-export const getOrderUiChoice = (order) => {
-  if (!order) return FORMA_PAGO_UI.EFECTIVO;
-  if (order.ui_payment_choice) return order.ui_payment_choice;
-  const m = order.paymentMethod || order.forma_pago;
-  if (m === FORMA_PAGO.CASH) return FORMA_PAGO_UI.EFECTIVO;
-  if (m === FORMA_PAGO.TRANSFER) return FORMA_PAGO_UI.MERCADOPAGO;
-  return m;
-};
+export const FORMA_PAGO_VALUES = Object.values(FORMA_PAGO);
 
 // Label largo para el cliente al elegir
-export const FORMA_PAGO_UI_LABELS = {
-  Efectivo: 'Efectivo al recibir',
-  MercadoPago: 'Pagar online (Mercado Pago)',
-  TransferenciaBancaria: 'Transferencia bancaria',
-};
-
-// Label corto para mostrar en cards del admin (debajo del monto). Se calcula
-// sobre paymentMethod (schema value) — si es "Transferencia" no podemos
-// distinguir MP de bank en este punto sin info adicional.
-export const FORMA_PAGO_LABELS_SHORT = {
-  Efectivo: 'Efectivo',
-  Transferencia: 'Pago online',
-};
-
-// Compat con código que esperaba 3 entradas
-FORMA_PAGO_LABELS_SHORT.TransferenciaBancaria = 'Transferencia';
-
-// Label largo histórico (se mantiene para no romper imports existentes)
 export const FORMA_PAGO_LABELS = {
   Efectivo: 'Efectivo al recibir',
-  Transferencia: 'Pagar online (Mercado Pago)',
-  TransferenciaBancaria: 'Transferencia bancaria',
+  Transferencia: 'Transferencia bancaria',
+  'Mercado Pago': 'Pagar online (Mercado Pago)',
+};
+
+// Label corto para mostrar en cards del admin (debajo del monto)
+export const FORMA_PAGO_LABELS_SHORT = {
+  Efectivo: 'Efectivo',
+  Transferencia: 'Transferencia',
+  'Mercado Pago': 'Pago online',
 };
 
 export const MEDALLION_LABELS = {

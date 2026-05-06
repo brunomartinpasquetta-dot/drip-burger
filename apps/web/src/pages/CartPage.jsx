@@ -20,7 +20,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import { normalizePhone, isValidPhone, formatPreview, esTelefonoValido } from '@/lib/phoneAr.js';
-import { FORMA_PAGO_UI, uiChoiceToSchema } from '@/lib/orderConstants.js';
+import { FORMA_PAGO } from '@/lib/orderConstants.js';
 
 const formatPrice = (price) => {
   return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(price || 0);
@@ -131,9 +131,8 @@ const CartPage = () => {
     direccion: '',
     takeAway: false,
     horario_reparto: '',
-    // forma_pago en este state es el UI CHOICE (Efectivo | MercadoPago |
-    // TransferenciaBancaria), NO el valor del schema. Al submit lo mapeamos
-    // a 'Efectivo' o 'Transferencia' (los únicos que el SelectField acepta).
+    // forma_pago se manda directo a PB. Valores válidos del SelectField
+    // tras la migración 1777700000: 'Efectivo' | 'Transferencia' | 'Mercado Pago'.
     forma_pago: 'Efectivo'
   });
 
@@ -336,14 +335,10 @@ const CartPage = () => {
         totalAmount: totalAmount,
         horario_reparto: formData.horario_reparto,
         deliveryTimeSlot: formData.horario_reparto,
-        // CRÍTICO: el schema PB sólo acepta 'Efectivo' o 'Transferencia'.
-        // Si formData.forma_pago es 'MercadoPago' o 'TransferenciaBancaria'
-        // (UI choices), mapeamos al schema value antes del create.
-        // Adicionalmente persistimos `ui_payment_choice` con el value
-        // original — sin esto el admin no puede distinguir MP de bank.
-        forma_pago: uiChoiceToSchema(formData.forma_pago),
-        paymentMethod: uiChoiceToSchema(formData.forma_pago),
-        ui_payment_choice: formData.forma_pago,
+        // forma_pago/paymentMethod van directo: el SelectField acepta los 3
+        // valores tras la migración 1777700000.
+        forma_pago: formData.forma_pago,
+        paymentMethod: formData.forma_pago,
         paymentStatus: 'Pendiente',
         orderStatus: 'Pendiente'
       };
@@ -367,7 +362,7 @@ const CartPage = () => {
 
       const order = await pb.collection('orders').create(orderData, { requestKey: null });
 
-      if (formData.forma_pago === FORMA_PAGO_UI.MERCADOPAGO) {
+      if (formData.forma_pago === FORMA_PAGO.MERCADOPAGO) {
         // Crear preferencia MP y redirigir al checkout de Mercado Pago
         setRedirectingToMp(true);
         try {
@@ -787,17 +782,17 @@ const CartPage = () => {
                       <SelectValue placeholder="Seleccioná método de pago" />
                     </SelectTrigger>
                     <SelectContent className="bg-card border-border">
-                      <SelectItem value={FORMA_PAGO_UI.EFECTIVO} className="font-bold uppercase focus:bg-primary/20 focus:text-primary">Efectivo al recibir</SelectItem>
-                      <SelectItem value={FORMA_PAGO_UI.MERCADOPAGO} className="font-bold uppercase focus:bg-primary/20 focus:text-primary">Pagar online (Mercado Pago)</SelectItem>
-                      <SelectItem value={FORMA_PAGO_UI.TRANSFERENCIA_BANCARIA} className="font-bold uppercase focus:bg-primary/20 focus:text-primary">Transferencia bancaria</SelectItem>
+                      <SelectItem value={FORMA_PAGO.EFECTIVO} className="font-bold uppercase focus:bg-primary/20 focus:text-primary">Efectivo al recibir</SelectItem>
+                      <SelectItem value={FORMA_PAGO.MERCADOPAGO} className="font-bold uppercase focus:bg-primary/20 focus:text-primary">Pagar online (Mercado Pago)</SelectItem>
+                      <SelectItem value={FORMA_PAGO.TRANSFERENCIA} className="font-bold uppercase focus:bg-primary/20 focus:text-primary">Transferencia bancaria</SelectItem>
                     </SelectContent>
                   </Select>
-                  {formData.forma_pago === FORMA_PAGO_UI.MERCADOPAGO && (
+                  {formData.forma_pago === FORMA_PAGO.MERCADOPAGO && (
                     <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mt-1">
                       Tarjeta, transferencia o Mercado Pago
                     </p>
                   )}
-                  {formData.forma_pago === FORMA_PAGO_UI.TRANSFERENCIA_BANCARIA && (
+                  {formData.forma_pago === FORMA_PAGO.TRANSFERENCIA && (
                     <BankTransferDetails />
                   )}
                 </div>
@@ -879,9 +874,9 @@ const CartPage = () => {
                       ? 'Procesando...'
                       : !storeIsOpen && !hoursLoading
                         ? 'Cerrado — No se puede pedir'
-                        : (formData.forma_pago === FORMA_PAGO_UI.MERCADOPAGO
+                        : (formData.forma_pago === FORMA_PAGO.MERCADOPAGO
                             ? 'Pagar'
-                            : formData.forma_pago === FORMA_PAGO_UI.TRANSFERENCIA_BANCARIA
+                            : formData.forma_pago === FORMA_PAGO.TRANSFERENCIA
                               ? 'Confirmar pedido'
                               : 'Hacer Pedido')}
                   </Button>

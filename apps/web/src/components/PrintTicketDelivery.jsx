@@ -48,8 +48,10 @@ const PrintTicketDelivery = ({ order }) => {
   const total = Number(order.totalAmount) || itemsTotal + shipping;
 
   const paymentMethod = order.paymentMethod || order.forma_pago || '';
-  const isCash = paymentMethod === FORMA_PAGO.CASH;
-  const isTransfer = paymentMethod === FORMA_PAGO.TRANSFER;
+  const isCash = paymentMethod === FORMA_PAGO.EFECTIVO;
+  const isTransferencia = paymentMethod === FORMA_PAGO.TRANSFERENCIA;
+  const isMercadopago = paymentMethod === FORMA_PAGO.MERCADOPAGO;
+  const isTransfer = isTransferencia || isMercadopago; // alias compat para el bloque de pago abajo
   const isPaid = order.paymentStatus === PAYMENT_STATUS.PAID;
 
   return (

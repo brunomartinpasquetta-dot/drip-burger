@@ -3,7 +3,7 @@ import { Helmet } from 'react-helmet';
 import { Link, useNavigate } from 'react-router-dom';
 import pb from '@/lib/pocketbaseClient';
 import apiServerClient from '@/lib/apiServerClient';
-import { ORDER_STATUS, PAYMENT_STATUS, FORMA_PAGO, FORMA_PAGO_UI, MEDALLION_LABELS, FORMA_PAGO_LABELS_SHORT, normalizeOrderStatus, getOrderUiChoice } from '@/lib/orderConstants';
+import { ORDER_STATUS, PAYMENT_STATUS, FORMA_PAGO, MEDALLION_LABELS, FORMA_PAGO_LABELS_SHORT, normalizeOrderStatus } from '@/lib/orderConstants';
 import Header from '@/components/Header.jsx';
 import ProductForm from '@/components/ProductForm.jsx';
 import ImageUploadButton from '@/components/ImageUploadButton.jsx';
@@ -684,15 +684,15 @@ const CajaCard = ({ currentUserId, jornada, jornadaLoading, refreshKey, onJornad
   const activeOrders = jornadaOrders.filter((o) => o.orderStatus !== ORDER_STATUS.CANCELLED);
   const cancelledOrders = jornadaOrders.filter((o) => o.orderStatus === ORDER_STATUS.CANCELLED);
   const cobrosEfectivo = activeOrders
-    .filter((o) => o.paymentMethod === FORMA_PAGO.CASH && o.paymentStatus === PAYMENT_STATUS.PAID)
+    .filter((o) => o.paymentMethod === FORMA_PAGO.EFECTIVO && o.paymentStatus === PAYMENT_STATUS.PAID)
     .reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
-  // Cobros online vía Mercado Pago (value histórico "Transferencia")
+  // Cobros online vía Mercado Pago (cobro automático por webhook)
   const cobrosMercadopago = activeOrders
     .filter((o) => o.paymentMethod === FORMA_PAGO.MERCADOPAGO && o.paymentStatus === PAYMENT_STATUS.PAID)
     .reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
   // Cobros por transferencia bancaria manual (admin valida con CBU/alias)
   const cobrosTransferenciaBancaria = activeOrders
-    .filter((o) => o.paymentMethod === FORMA_PAGO.TRANSFERENCIA_BANCARIA && o.paymentStatus === PAYMENT_STATUS.PAID)
+    .filter((o) => o.paymentMethod === FORMA_PAGO.TRANSFERENCIA && o.paymentStatus === PAYMENT_STATUS.PAID)
     .reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
   // Total no-efectivo (suma MP + transferencia bancaria) — útil para resumen
   const cobrosTransferencia = cobrosMercadopago + cobrosTransferenciaBancaria;
@@ -1934,16 +1934,14 @@ const AdminDashboard = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
                   {sortedOrders.map(order => {
                     const isPaid = order.paymentStatus === PAYMENT_STATUS.PAID;
-                    // El schema PB colapsa MP y bank en value "Transferencia".
-                    // Distinguimos via ui_payment_choice (con fallback heurístico
-                    // para orders viejos) — clave para mostrar el botón correcto.
-                    const uiChoice = getOrderUiChoice(order);
-                    const isCash = uiChoice === FORMA_PAGO_UI.EFECTIVO;
-                    const isMercadopago = uiChoice === FORMA_PAGO_UI.MERCADOPAGO;
-                    const isTransferenciaBancaria = uiChoice === FORMA_PAGO_UI.TRANSFERENCIA_BANCARIA;
+                    // El SelectField forma_pago acepta los 3 valores tras la
+                    // migración 1777700000 — comparamos directo sin mapeos.
+                    const isCash = order.paymentMethod === FORMA_PAGO.EFECTIVO;
+                    const isTransferencia = order.paymentMethod === FORMA_PAGO.TRANSFERENCIA;
+                    const isMercadopago = order.paymentMethod === FORMA_PAGO.MERCADOPAGO;
                     const cashPending = isCash && !isPaid;
+                    const transferenciaPending = isTransferencia && !isPaid;
                     const mpPending = isMercadopago && !isPaid;
-                    const bankPending = isTransferenciaBancaria && !isPaid;
                     const borderCls = STATUS_BORDER_COLOR[order.orderStatus] || STATUS_BORDER_COLOR[ORDER_STATUS.PENDING];
                     const isProcessing = isPending(order.id);
                     const isCancelled = order.orderStatus === ORDER_STATUS.CANCELLED;
@@ -1970,14 +1968,9 @@ const AdminDashboard = () => {
                             </p>
                             {/* Forma de pago en label chico debajo del monto */}
                             <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mt-0.5 leading-none">
-                              {/* Label distingue MP de bank usando ui_payment_choice
-                                  con fallback heurístico (ver getOrderUiChoice). */}
-                              {(() => {
-                                if (uiChoice === FORMA_PAGO_UI.EFECTIVO) return 'Efectivo';
-                                if (uiChoice === FORMA_PAGO_UI.MERCADOPAGO) return 'Pago online';
-                                if (uiChoice === FORMA_PAGO_UI.TRANSFERENCIA_BANCARIA) return 'Transferencia';
-                                return order.paymentMethod || '—';
-                              })()}
+                              {/* paymentMethod ahora distingue los 3 directo
+                                  desde el SelectField del schema. */}
+                              {FORMA_PAGO_LABELS_SHORT[order.paymentMethod] || order.paymentMethod || '—'}
                             </p>
                           </div>
                         </div>
@@ -2046,20 +2039,20 @@ const AdminDashboard = () => {
                             // transferencia bancaria).
                             <Button
                               onClick={() => handleMarkPaid(order.id)}
-                              disabled={!(cashPending || bankPending) || isProcessing}
+                              disabled={!(cashPending || transferenciaPending) || isProcessing}
                               size="sm"
                               className={`flex-1 h-10 shadow-sm text-[10px] font-black uppercase tracking-wide ${
-                                (cashPending || bankPending)
+                                (cashPending || transferenciaPending)
                                   ? 'bg-green-500 hover:bg-green-600 text-black border-0'
                                   : 'bg-green-500/20 text-green-400 border border-green-500/40 disabled:opacity-100'
                               }`}
                             >
                               <Banknote className="mr-1 h-3 w-3" />
-                              {(cashPending || bankPending)
+                              {(cashPending || transferenciaPending)
                                 ? 'Cobrar'
                                 : (isMercadopago
                                     ? '✓ Pagado MP'
-                                    : isTransferenciaBancaria
+                                    : isTransferencia
                                       ? '✓ Transf. cobrada'
                                       : '✓ Cobrado')}
                             </Button>
