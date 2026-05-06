@@ -1,0 +1,5 @@
+- [PocketBase silently drops unknown fields](feedback_pb_silent_drop.md) — siempre validar post-save comparando enviado vs recibido
+- [Modelo de pago de 3 valores](project_payment_model.md) — Efectivo/Transferencia/Mercado Pago directo en SelectField, sin mappers
+- [Flujo WA en transferencia bancaria](project_bank_transfer_wa.md) — endpoint /orders/send-bank-transfer-info + banner en confirmación
+- [Arranque PocketBase local](reference_local_pb.md) — bash scripts/start-pb-local.sh (port 8090, container burgapp_pocketbase)
+- [Stack y puertos del proyecto](project_stack_ports.md) — web 3001, api 3002, PB 8090, dominio dripburger.shop
