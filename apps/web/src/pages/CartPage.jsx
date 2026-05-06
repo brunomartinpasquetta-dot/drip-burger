@@ -389,8 +389,41 @@ const CartPage = () => {
         }
       }
 
+      // Si es transferencia bancaria, disparamos el WA con datos del banco +
+      // pedido de comprobante. Esperamos la respuesta (corta) para saber si el
+      // mensaje se mandó y mostrar el banner correcto en la confirmación.
+      // Tolerante: cualquier fallo se traduce en "no se mandó" y caemos al
+      // fallback en pantalla con los datos copiables.
+      let bankWa = { messageSent: false, phoneNormalized: phoneNormalized };
+      if (formData.forma_pago === FORMA_PAGO.TRANSFERENCIA) {
+        try {
+          const res = await apiServerClient.fetch('/orders/send-bank-transfer-info', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              orderId: order.id,
+              customerPhone: phoneNormalized,
+              customerName: nombreCompleto,
+              totalAmount,
+              orderNumber: order.orderNumber,
+            }),
+          });
+          const ctype = res.headers.get('content-type') || '';
+          if (res.ok && ctype.includes('application/json')) {
+            const data = await res.json();
+            bankWa = {
+              messageSent: !!data.messageSent,
+              phoneNormalized: data.phoneNormalized || phoneNormalized,
+              reason: data.reason,
+            };
+          }
+        } catch (err) {
+          console.warn('[CartPage] send-bank-transfer-info failed:', err);
+        }
+      }
+
       clearCart();
-      navigate(`/confirmacion/${order.id}`, { state: { order } });
+      navigate(`/confirmacion/${order.id}`, { state: { order, bankWa } });
     } catch (error) {
       // Surface el campo que falla la validación de PB para que el admin
       // pueda diagnosticar (ej: "clienteId no existe en schema" → falta migrar).
