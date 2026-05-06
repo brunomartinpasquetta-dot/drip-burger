@@ -86,6 +86,20 @@ export const uiChoiceToSchema = (uiChoice) => {
   }
 };
 
+// Resuelve el UI choice de un order leyendo `ui_payment_choice` si está
+// presente. Para orders viejos (anteriores a la migración 1777800000) cae
+// a heurística: efectivo → Efectivo; transferencia → MercadoPago (porque
+// históricamente el value "Transferencia" era exclusivo de MP antes de
+// agregar transferencia bancaria manual).
+export const getOrderUiChoice = (order) => {
+  if (!order) return FORMA_PAGO_UI.EFECTIVO;
+  if (order.ui_payment_choice) return order.ui_payment_choice;
+  const m = order.paymentMethod || order.forma_pago;
+  if (m === FORMA_PAGO.CASH) return FORMA_PAGO_UI.EFECTIVO;
+  if (m === FORMA_PAGO.TRANSFER) return FORMA_PAGO_UI.MERCADOPAGO;
+  return m;
+};
+
 // Label largo para el cliente al elegir
 export const FORMA_PAGO_UI_LABELS = {
   Efectivo: 'Efectivo al recibir',

@@ -338,9 +338,12 @@ const CartPage = () => {
         deliveryTimeSlot: formData.horario_reparto,
         // CRÍTICO: el schema PB sólo acepta 'Efectivo' o 'Transferencia'.
         // Si formData.forma_pago es 'MercadoPago' o 'TransferenciaBancaria'
-        // (UI choices), tenemos que mapear al schema value antes del create.
+        // (UI choices), mapeamos al schema value antes del create.
+        // Adicionalmente persistimos `ui_payment_choice` con el value
+        // original — sin esto el admin no puede distinguir MP de bank.
         forma_pago: uiChoiceToSchema(formData.forma_pago),
         paymentMethod: uiChoiceToSchema(formData.forma_pago),
+        ui_payment_choice: formData.forma_pago,
         paymentStatus: 'Pendiente',
         orderStatus: 'Pendiente'
       };
