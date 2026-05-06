@@ -1,0 +1,15 @@
+## Pages
+- [- DRIP BURGER](/admindashboard): No description available
+- [¡Pedido confirmado! - DRIP BURGER](/paymentreturnpages): No description available
+- [Configuración - DRIP BURGER](/settings): No description available
+- [Confirmación - DRIP BURGER](/confirmation): No description available
+- [DRIP BURGER - Streetwear Burgers](/home): DRIP BURGER. No venimos a competir, venimos a marcar la diferencia, mordida a mordida.
+- [Editar Pedidos - DRIP BURGER](/editorders): No description available
+- [Ingreso Staff - DRIP BURGER](/login): No description available
+- [Menú - DRIP BURGER](/customermenu): No description available
+- [Mi Perfil - DRIP](/profileedit): No description available
+- [Mi Perfil - DRIP BURGER](/profile): No description available
+- [Mis Pedidos - DRIP BURGER](/orderhistory): No description available
+- [Recuperar Contraseña - DRIP BURGER](/forgotpassword): No description available
+- [Redirigiendo a Mercado Pago...](/cart): No description available
+- [Reportes - DRIP BURGER](/salesreporting): No description available
