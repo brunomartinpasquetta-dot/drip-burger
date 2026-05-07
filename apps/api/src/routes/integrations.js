@@ -18,8 +18,42 @@ const router = express.Router();
 router.use(requireAdmin);
 
 // ── Helpers para leer/escribir registros de integrations ─────────
+// Auto-upsert: si la migración 1776500000 no se ejecutó (PB nunca reinició
+// tras agregar el archivo, o se está corriendo en un entorno fresco), el
+// getFirstListItem tira 404 y los endpoints /status devolvían 500 →
+// frontend mostraba "No se pudo cargar" sin posibilidad de recuperación.
+// Ahora si no existe lo creamos con defaults seguros (disconnected/disabled).
+const DEFAULT_INTEGRATIONS = {
+    whatsapp: {
+        enabled: false,
+        status: 'disconnected',
+        config: { sessionExists: false, phoneNumber: '' },
+    },
+    mercadopago: {
+        enabled: false,
+        status: 'disconnected',
+        config: { accessToken: '', publicKey: '', webhookSecret: '' },
+    },
+};
+
 const getIntegration = async (key) => {
-    return pb.collection('integrations').getFirstListItem(`key="${key}"`, { requestKey: null });
+    try {
+        return await pb.collection('integrations').getFirstListItem(`key="${key}"`, { requestKey: null });
+    } catch (err) {
+        if (err?.status === 404 && DEFAULT_INTEGRATIONS[key]) {
+            logger.warn(`[integrations] record "${key}" missing in PB — creando con defaults`);
+            try {
+                return await pb.collection('integrations').create({
+                    key,
+                    ...DEFAULT_INTEGRATIONS[key],
+                }, { requestKey: null });
+            } catch (createErr) {
+                logger.error(`[integrations] no pude auto-seedear "${key}": ${createErr?.message || createErr}`);
+                throw createErr;
+            }
+        }
+        throw err;
+    }
 };
 
 const patchIntegration = async (key, patch) => {
@@ -265,6 +299,24 @@ router.post('/mercadopago/test', async (req, res) => {
     } catch (err) {
         logger.error(`[mercadopago/test] ${err.message}`);
         return res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// POST /integrations/mercadopago/disconnect
+// Limpia las credenciales encriptadas y deja el estado disconnected, así el
+// admin puede vincular otra cuenta desde la UI sin tocar PB a mano.
+router.post('/mercadopago/disconnect', async (req, res) => {
+    try {
+        await patchIntegration('mercadopago', {
+            enabled: false,
+            status: 'disconnected',
+            config: { accessToken: '', publicKey: '', webhookSecret: '' },
+            lastError: '',
+        });
+        return res.json({ success: true });
+    } catch (err) {
+        logger.error(`[integrations/mercadopago/disconnect] ${err.message}`);
+        return res.status(500).json({ error: err.message });
     }
 });
 

@@ -29,7 +29,7 @@ import {
 import { toast } from 'sonner';
 import {
   waStatus, waConnect, waDisconnect, waTest, waToggle,
-  mpStatus, mpSave, mpTest, mpToggle,
+  mpStatus, mpSave, mpTest, mpToggle, mpDisconnect,
 } from '@/lib/integrationsClient';
 import { computeIsOpen } from '@/hooks/useStoreHours';
 import { useAuth } from '@/contexts/AuthContext.jsx';
@@ -626,18 +626,20 @@ const WhatsAppCard = () => {
   const { isAuthReady, currentUser } = useAuth();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const [busyAction, setBusyAction] = useState(null); // 'connect' | 'disconnect' | 'test' | 'toggle'
   const [qrOpen, setQrOpen] = useState(false);
   const [testPhone, setTestPhone] = useState('');
   const pollingRef = useRef(null);
 
   const load = useCallback(async () => {
+    setLoadError(null);
     try {
       const res = await waStatus();
       setData(res || null);
     } catch (err) {
       console.error('[WhatsAppCard] status failed:', err);
-      toast.error(`Error al leer estado de WhatsApp: ${err.message}`);
+      setLoadError(err);
       setData(null);
     } finally {
       setLoading(false);
@@ -740,11 +742,59 @@ const WhatsAppCard = () => {
   }
 
   if (!data) {
+    // Modo recovery: el status falló (token expirado, API caída, record
+    // missing). Mostramos el error real + retry + acción de conectar igual,
+    // así el admin no queda atascado. Si el problema es el record en PB,
+    // el endpoint /connect lo crea con auto-upsert.
     return (
-      <div className="bg-card border border-border border-l-[6px] border-l-red-500 rounded-lg p-4">
+      <div className="bg-card border border-border border-l-[6px] border-l-red-500 rounded-lg p-4 space-y-3">
         <div className="flex items-start gap-2 text-red-400">
           <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
-          <p className="text-sm font-bold">No se pudo cargar el estado de WhatsApp. Revisá la consola.</p>
+          <div className="min-w-0">
+            <p className="text-sm font-bold">No se pudo cargar el estado de WhatsApp.</p>
+            {loadError?.message && (
+              <p className="text-[11px] font-mono text-red-300/80 mt-1 break-all">
+                {loadError.message}
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <Button
+            onClick={load}
+            variant="outline"
+            size="sm"
+            className="flex-1 h-10 border-border text-xs font-black uppercase tracking-wide"
+          >
+            <RefreshCw className="mr-1 h-4 w-4" />Reintentar
+          </Button>
+          <Button
+            onClick={async () => {
+              setBusyAction('connect');
+              try {
+                const res = await waConnect();
+                setData(res);
+                setLoadError(null);
+                if (res.status !== 'connected') {
+                  setQrOpen(true);
+                  toast('Escaneá el QR desde el celular del negocio');
+                } else {
+                  toast.success('WhatsApp conectado');
+                }
+              } catch (err) {
+                toast.error(`Error al conectar: ${err.message}`);
+              } finally {
+                setBusyAction(null);
+              }
+            }}
+            disabled={busyAction !== null}
+            size="sm"
+            className="btn-primary flex-1 h-10 text-xs font-black uppercase tracking-wide"
+          >
+            {busyAction === 'connect'
+              ? <Loader2 className="h-4 w-4 animate-spin" />
+              : <><MessageCircle className="mr-1 h-4 w-4" />Conectar igual</>}
+          </Button>
         </div>
       </div>
     );
@@ -872,6 +922,7 @@ const MercadoPagoCard = () => {
   const { isAuthReady, currentUser } = useAuth();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const [busyAction, setBusyAction] = useState(null);
   const [form, setForm] = useState({
     accessToken: '',
@@ -885,6 +936,7 @@ const MercadoPagoCard = () => {
   });
 
   const load = useCallback(async () => {
+    setLoadError(null);
     try {
       const res = await mpStatus();
       // Defensa: si la API responde algo raro y res es null/undefined,
@@ -899,7 +951,7 @@ const MercadoPagoCard = () => {
       }
     } catch (err) {
       console.error('[MercadoPagoCard] status failed:', err);
-      toast.error(`Error al leer estado de MP: ${err.message}`);
+      setLoadError(err);
       setData(null);
     } finally {
       setLoading(false);
@@ -960,6 +1012,24 @@ const MercadoPagoCard = () => {
     }
   };
 
+  // Limpia las credenciales encriptadas en PB para que el admin pueda
+  // vincular otra cuenta. No afecta pedidos pasados — sólo deshabilita
+  // futuros checkouts vía MP hasta que se carguen credenciales nuevas.
+  const handleDisconnect = async () => {
+    if (!window.confirm('¿Seguro? Vas a borrar las credenciales actuales. Después podés vincular otra cuenta cargando los nuevos tokens.')) return;
+    setBusyAction('disconnect');
+    try {
+      await mpDisconnect();
+      setForm({ accessToken: '', publicKey: '', webhookSecret: '' });
+      toast.success('Credenciales borradas. Cargá las nuevas y guardá.');
+      await load();
+    } catch (err) {
+      toast.error(`Error: ${err.message}`);
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
   const webhookUrl = 'https://api.dripburger.com/mp/webhook';
   const copyWebhook = async () => {
     try {
@@ -976,14 +1046,34 @@ const MercadoPagoCard = () => {
 
   if (!data) {
     return (
-      <div className="bg-card border border-border border-l-[6px] border-l-red-500 rounded-lg p-4">
+      <div className="bg-card border border-border border-l-[6px] border-l-red-500 rounded-lg p-4 space-y-3">
         <div className="flex items-start gap-2 text-red-400">
           <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
-          <p className="text-sm font-bold">No se pudo cargar el estado de Mercado Pago.</p>
+          <div className="min-w-0">
+            <p className="text-sm font-bold">No se pudo cargar el estado de Mercado Pago.</p>
+            {loadError?.message && (
+              <p className="text-[11px] font-mono text-red-300/80 mt-1 break-all">
+                {loadError.message}
+              </p>
+            )}
+          </div>
         </div>
+        <Button
+          onClick={load}
+          variant="outline"
+          size="sm"
+          className="w-full h-10 border-border text-xs font-black uppercase tracking-wide"
+        >
+          <RefreshCw className="mr-1 h-4 w-4" />Reintentar
+        </Button>
+        <p className="text-[10px] text-muted-foreground font-medium text-center">
+          Si el problema persiste, mirá la consola y los logs de la API.
+        </p>
       </div>
     );
   }
+
+  const isConnected = (data.status || '') === 'connected';
 
   const status = data.status || 'disconnected';
   const borderCls = BORDER_BY_STATUS[status] || 'border-l-red-500';
@@ -1079,24 +1169,41 @@ const MercadoPagoCard = () => {
       </div>
 
       {/* Row 4: acciones */}
-      <div className="px-4 py-3 border-t border-border flex flex-col sm:flex-row gap-2">
-        <Button
-          onClick={handleSave}
-          disabled={busyAction !== null}
-          size="sm"
-          className="btn-primary flex-1 h-10 text-xs font-black uppercase tracking-wide shadow-sm"
-        >
-          {busyAction === 'save' ? <Loader2 className="h-4 w-4 animate-spin" /> : <><RefreshCw className="mr-1 h-4 w-4" />Guardar</>}
-        </Button>
-        <Button
-          onClick={handleTest}
-          disabled={busyAction !== null || status !== 'connected'}
-          variant="outline"
-          size="sm"
-          className="flex-1 h-10 border-border btn-secondary text-xs font-black uppercase tracking-wide"
-        >
-          {busyAction === 'test' ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Send className="mr-1 h-4 w-4" />Probar</>}
-        </Button>
+      <div className="px-4 py-3 border-t border-border space-y-2">
+        <div className="flex flex-col sm:flex-row gap-2">
+          <Button
+            onClick={handleSave}
+            disabled={busyAction !== null}
+            size="sm"
+            className="btn-primary flex-1 h-10 text-xs font-black uppercase tracking-wide shadow-sm"
+          >
+            {busyAction === 'save'
+              ? <Loader2 className="h-4 w-4 animate-spin" />
+              : <><RefreshCw className="mr-1 h-4 w-4" />{isConnected ? 'Vincular otra cuenta' : 'Guardar'}</>}
+          </Button>
+          <Button
+            onClick={handleTest}
+            disabled={busyAction !== null || !isConnected}
+            variant="outline"
+            size="sm"
+            className="flex-1 h-10 border-border btn-secondary text-xs font-black uppercase tracking-wide"
+          >
+            {busyAction === 'test' ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Send className="mr-1 h-4 w-4" />Probar</>}
+          </Button>
+        </div>
+        {isConnected && (
+          <Button
+            onClick={handleDisconnect}
+            disabled={busyAction !== null}
+            variant="outline"
+            size="sm"
+            className="w-full h-10 border-red-500/50 text-red-400 hover:bg-red-500/10 text-xs font-black uppercase tracking-wide"
+          >
+            {busyAction === 'disconnect'
+              ? <Loader2 className="h-4 w-4 animate-spin" />
+              : <><Power className="mr-1 h-4 w-4" />Desvincular cuenta</>}
+          </Button>
+        )}
       </div>
 
       {/* Row 5: webhook URL copiable */}

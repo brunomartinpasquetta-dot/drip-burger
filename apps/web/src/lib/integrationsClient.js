@@ -82,6 +82,7 @@ export const mpStatus = () => callApi('/integrations/mercadopago/status');
 export const mpSave = (credentials) => callApi('/integrations/mercadopago/save', { method: 'POST', body: credentials });
 export const mpTest = () => callApi('/integrations/mercadopago/test', { method: 'POST' });
 export const mpToggle = (enabled) => callApi('/integrations/mercadopago/toggle', { method: 'POST', body: { enabled } });
+export const mpDisconnect = () => callApi('/integrations/mercadopago/disconnect', { method: 'POST' });
 
 export default {
     getIntegration,
@@ -95,4 +96,5 @@ export default {
     mpSave,
     mpTest,
     mpToggle,
+    mpDisconnect,
 };
