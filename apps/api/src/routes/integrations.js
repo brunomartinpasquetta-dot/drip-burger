@@ -10,6 +10,8 @@ import {
     getStatus as getWhatsAppStatus,
     getQrCode as getWhatsAppQr,
     isReady as waIsReady,
+    getClient as getWhatsAppClient,
+    normalizePhone as normalizeWhatsAppPhone,
 } from '../services/whatsappService.js';
 
 const router = express.Router();
@@ -144,13 +146,59 @@ router.post('/whatsapp/test', async (req, res) => {
         return res.status(400).json({ error: 'WhatsApp no está conectado. Conectá primero.' });
     }
 
+    const normalized = normalizeWhatsAppPhone(phone);
+    if (!normalized || normalized.length < 12) {
+        return res.status(400).json({
+            error: `Teléfono inválido. Esperaba formato AR (ej +54 9 342 512 3456). Normalizado: "${normalized}"`,
+            phoneNormalized: normalized,
+        });
+    }
+
+    // Pre-check: si el número objetivo es el mismo que el conectado, WA Web
+    // rechaza el envío a uno mismo con "wid error: invalid wid". Devolvemos
+    // mensaje claro en vez del error críptico de puppeteer.
+    try {
+        const live = getWhatsAppStatus();
+        const ownNumber = (live.phoneNumber || '').replace(/[^0-9]/g, '');
+        if (ownNumber && ownNumber === normalized) {
+            return res.status(400).json({
+                error: 'No podés mandarte un mensaje a vos mismo. Probá con otro número (ej: tu celu personal).',
+                phoneNormalized: normalized,
+                ownNumber,
+            });
+        }
+    } catch (e) { /* noop — chequeo best-effort */ }
+
+    // Pre-check: el número debe estar registrado en WhatsApp.
+    // isRegisteredUser tira si puppeteer está en mal estado, así que lo
+    // envolvemos y caemos al sendMessage si no podemos verificar.
+    const chatId = `${normalized}@c.us`;
+    try {
+        const client = getWhatsAppClient();
+        if (client && typeof client.isRegisteredUser === 'function') {
+            const exists = await client.isRegisteredUser(chatId);
+            if (!exists) {
+                return res.status(400).json({
+                    error: `El número ${normalized} no tiene WhatsApp. Verificá que sea correcto.`,
+                    phoneNormalized: normalized,
+                });
+            }
+        }
+    } catch (e) {
+        logger.warn(`[whatsapp/test] isRegisteredUser falló (sigo igual con sendMessage): ${e?.message || e}`);
+    }
+
     try {
         const msg = `🍔 Test de conexión Drip Burger ✅\n\nSi estás leyendo esto, la integración con WhatsApp funciona perfecto.`;
         await sendMessage(phone, msg);
-        return res.json({ success: true });
+        return res.json({ success: true, phoneNormalized: normalized });
     } catch (err) {
-        logger.error(`[integrations/whatsapp/test] ${err.message}`);
-        return res.status(500).json({ success: false, error: err.message });
+        logger.error(`[integrations/whatsapp/test] phone="${phone}" normalized="${normalized}" err=${err?.message || err}`);
+        return res.status(500).json({
+            success: false,
+            error: err?.message || String(err),
+            phoneNormalized: normalized,
+        });
     }
 });
 
