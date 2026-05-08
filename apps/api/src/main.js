@@ -35,8 +35,20 @@ process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
 app.use(helmet());
+
+// CORS — aceptamos múltiples orígenes (con y sin "www", localhost para dev).
+// CORS_ORIGIN puede ser una lista separada por comas. Default cubre los 3
+// orígenes válidos de prod + dev local sin necesidad de tocar env vars.
+const allowedOrigins = (process.env.CORS_ORIGIN
+	? process.env.CORS_ORIGIN.split(',').map(s => s.trim()).filter(Boolean)
+	: ['https://dripburger.shop', 'https://www.dripburger.shop', 'http://localhost:3001']);
 app.use(cors({
-	origin: process.env.CORS_ORIGIN,
+	origin: (origin, cb) => {
+		// origin === undefined cuando es same-origin / curl / health-checks
+		if (!origin) return cb(null, true);
+		if (allowedOrigins.includes(origin)) return cb(null, true);
+		return cb(new Error(`CORS bloqueado: origin ${origin} no permitido`));
+	},
 	credentials: true,
 }));
 app.use(morgan('combined'));
