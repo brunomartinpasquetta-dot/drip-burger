@@ -3,9 +3,8 @@
 // Hook onRecordUpdate de orders. Tiene 2 responsabilidades:
 //
 // 1) BLOQUEAR FINALIZACIÓN SIN PAGO
-//    Si orderStatus pasa a "Entregado" y paymentStatus !== "Pagado",
-//    rechazar con BadRequestError. (El valor "Finalizado" es legacy —
-//    la migración 1777600000 lo renombró a "Entregado".)
+//    Si orderStatus pasa a "Finalizado" y paymentStatus !== "Pagado",
+//    rechazar con BadRequestError.
 //
 // 2) IMPACTO AUTOMÁTICO EN CAJA AL VALIDAR PAGO
 //    Si paymentStatus pasa de cualquier valor (Pendiente/Rechazado) a "Pagado":
@@ -28,10 +27,7 @@ onRecordUpdate((e) => {
   const oldPayment = original ? original.get("paymentStatus") : "";
 
   // ── 1) Bloqueo finalizar sin pago ─────────────────────────────────
-  if (
-    (newStatus === "Entregado" || newStatus === "Finalizado") &&
-    newPayment !== "Pagado"
-  ) {
+  if (newStatus === "Finalizado" && newPayment !== "Pagado") {
     throw new BadRequestError("No se puede finalizar un pedido sin cobro confirmado.");
   }
 

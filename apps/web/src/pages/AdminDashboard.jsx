@@ -1409,9 +1409,10 @@ const AdminDashboard = () => {
       ]);
       setProducts(productsData);
       setCustomers(customersData);
-      // Normalizamos orderStatus al leer para que orders viejos con valores
-      // legacy ("En camino", "Finalizado") matcheen los filtros y la lógica
-      // de botones que usa los nombres nuevos ("Enviado", "Entregado").
+      // Normalizamos orderStatus al leer por si quedó algún registro con los
+      // nombres "modernos" (Enviado/Entregado) de una corrida antigua: lo
+      // mapeamos a los legacy (En camino/Finalizado) que es lo que usa la
+      // app en runtime.
       // La migración 1777600000 los renombra en PB; este normalize es la
       // red de seguridad mientras la migración se aplica.
       setOrders(ordersData.map((o) => ({
@@ -1931,8 +1932,8 @@ const AdminDashboard = () => {
                     { value: ORDER_STATUS.PENDING, label: 'Pendiente' },
                     { value: ORDER_STATUS.COOKING, label: 'En preparación' },
                     { value: ORDER_STATUS.READY, label: 'Listo' },
-                    { value: ORDER_STATUS.IN_TRANSIT, label: 'Enviado' },
-                    { value: ORDER_STATUS.COMPLETED, label: 'Entregado' },
+                    { value: ORDER_STATUS.IN_TRANSIT, label: 'En camino' },
+                    { value: ORDER_STATUS.COMPLETED, label: 'Finalizado' },
                   ].map(opt => (
                     <button
                       key={opt.value}
@@ -2145,10 +2146,10 @@ const AdminDashboard = () => {
                               {isProcessing ? '...' : 'Entregar'}
                             </Button>
                           )}
-                          {/* ENTREGADO → estado final, sin botón de avance */}
+                          {/* FINALIZADO → estado final, sin botón de avance */}
                           {order.orderStatus === ORDER_STATUS.DELIVERED && (
                             <div className="flex-1 h-10 flex items-center justify-center rounded-md bg-green-500/10 border border-green-500/30">
-                              <span className="text-[10px] text-green-500 font-black uppercase tracking-wide">✓ Entregado</span>
+                              <span className="text-[10px] text-green-500 font-black uppercase tracking-wide">✓ Finalizado</span>
                             </div>
                           )}
                         </div>
