@@ -36,18 +36,32 @@ process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
 app.use(helmet());
 
-// CORS — aceptamos múltiples orígenes (con y sin "www", localhost para dev).
-// CORS_ORIGIN puede ser una lista separada por comas. Default cubre los 3
-// orígenes válidos de prod + dev local sin necesidad de tocar env vars.
-const allowedOrigins = (process.env.CORS_ORIGIN
+// CORS — siempre permitimos apex + www + localhost. Cualquier origen extra
+// definido en CORS_ORIGIN (lista CSV) se suma a esos defaults. Ningún env
+// var puede dejar a www o apex sin acceso, porque el frontend de prod
+// puede servirse en cualquiera de las 2 variantes y los usuarios entran
+// indistintamente.
+const DEFAULT_ALLOWED = [
+	'https://dripburger.shop',
+	'https://www.dripburger.shop',
+	'http://localhost:3001',
+	'http://localhost:5173',
+];
+const extraAllowed = process.env.CORS_ORIGIN
 	? process.env.CORS_ORIGIN.split(',').map(s => s.trim()).filter(Boolean)
-	: ['https://dripburger.shop', 'https://www.dripburger.shop', 'http://localhost:3001']);
+	: [];
+const allowedOrigins = Array.from(new Set([...DEFAULT_ALLOWED, ...extraAllowed]));
+logger.info(`[cors] orígenes permitidos: ${allowedOrigins.join(', ')}`);
 app.use(cors({
 	origin: (origin, cb) => {
 		// origin === undefined cuando es same-origin / curl / health-checks
 		if (!origin) return cb(null, true);
 		if (allowedOrigins.includes(origin)) return cb(null, true);
-		return cb(new Error(`CORS bloqueado: origin ${origin} no permitido`));
+		// En vez de tirar Error (que rompe el preflight con 500), respondemos
+		// false: el browser muestra error CORS limpio y los handlers downstream
+		// pueden decidir 403/200 según convenga.
+		logger.warn(`[cors] origin bloqueado: ${origin}`);
+		return cb(null, false);
 	},
 	credentials: true,
 }));
