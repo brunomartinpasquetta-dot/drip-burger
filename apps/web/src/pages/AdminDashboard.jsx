@@ -1651,8 +1651,28 @@ const AdminDashboard = () => {
       );
       setOrders(prev => prev.map(o => o.id === order.id ? { ...o, ...updated } : o));
     } catch (error) {
-      console.error('[handleSendWhatsApp] order update failed:', { orderId: order.id, status: error?.status, data: error?.response?.data });
-      toast.error(`Error al actualizar el pedido (${error?.status || 'sin status'})`);
+      const detail = error?.response?.data || error?.data;
+      console.error('[handleSendWhatsApp] order update failed:', {
+        orderId: order.id,
+        status: error?.status,
+        message: error?.message,
+        data: detail,
+      });
+      // Surface el motivo de PB. Cuando es validation_invalid_value en
+      // orderStatus suele significar que la migración 1777900000 no se
+      // aplicó (PB no aceptó "Enviado").
+      let reason = `${error?.status || 'sin status'}`;
+      if (detail?.data && typeof detail.data === 'object') {
+        const fields = Object.entries(detail.data)
+          .map(([k, v]) => `${k}: ${v?.message || v?.code || JSON.stringify(v)}`)
+          .join(' · ');
+        if (fields) reason = fields;
+      } else if (detail?.message) {
+        reason = detail.message;
+      } else if (error?.message) {
+        reason = error.message;
+      }
+      toast.error(`Error al actualizar el pedido — ${reason}`);
       markPending(order.id, false);
       return;
     }
