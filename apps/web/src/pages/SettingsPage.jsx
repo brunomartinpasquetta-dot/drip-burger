@@ -628,7 +628,6 @@ const WhatsAppCard = () => {
   const [data, setData] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [busyAction, setBusyAction] = useState(null); // 'connect' | 'disconnect' | 'test' | 'toggle'
-  const [qrOpen, setQrOpen] = useState(false);
   const [testPhone, setTestPhone] = useState('');
   const pollingRef = useRef(null);
 
@@ -651,9 +650,12 @@ const WhatsAppCard = () => {
     load();
   }, [isAuthReady, currentUser, load]);
 
-  // Polling cuando el modal de QR está abierto — cada 2s
+  // Polling automático cada 2s mientras el status sea pending_qr — el QR vive
+  // inline en la card, no en un modal, así queda fijo en pantalla hasta que
+  // el cliente del local lo escanee y la conexión pase a 'connected'.
   useEffect(() => {
-    if (!qrOpen) {
+    const isPending = data?.status === 'pending_qr';
+    if (!isPending) {
       if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
       return;
     }
@@ -664,17 +666,14 @@ const WhatsAppCard = () => {
         if (res.status === 'connected') {
           clearInterval(pollingRef.current);
           pollingRef.current = null;
-          setQrOpen(false);
           toast.success('WhatsApp conectado correctamente');
         }
-      } catch (err) {
-        // silenciar errores de polling
-      }
+      } catch (err) { /* silenciar errores de polling */ }
     }, 2000);
     return () => {
       if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
     };
-  }, [qrOpen]);
+  }, [data?.status]);
 
   const handleConnect = async () => {
     setBusyAction('connect');
@@ -684,7 +683,6 @@ const WhatsAppCard = () => {
       if (res.status === 'connected') {
         toast.success('WhatsApp ya estaba conectado');
       } else {
-        setQrOpen(true);
         toast('Escaneá el QR desde el celular del negocio');
       }
     } catch (err) {
@@ -776,7 +774,6 @@ const WhatsAppCard = () => {
                 setData(res);
                 setLoadError(null);
                 if (res.status !== 'connected') {
-                  setQrOpen(true);
                   toast('Escaneá el QR desde el celular del negocio');
                 } else {
                   toast.success('WhatsApp conectado');
@@ -866,10 +863,12 @@ const WhatsAppCard = () => {
           ) : (
             <Button
               onClick={handleConnect}
-              disabled={busyAction !== null || !data.enabled}
+              disabled={busyAction !== null || !data.enabled || status === 'pending_qr'}
               className="btn-primary w-full h-11 text-sm font-black uppercase tracking-wide shadow-sm"
             >
-              {busyAction === 'connect' ? <Loader2 className="h-5 w-5 animate-spin" /> : <><MessageCircle className="mr-2 h-5 w-5" />Conectar WhatsApp</>}
+              {busyAction === 'connect' || status === 'pending_qr'
+                ? <><Loader2 className="mr-2 h-5 w-5 animate-spin" />Esperando escaneo...</>
+                : <><MessageCircle className="mr-2 h-5 w-5" />Conectar WhatsApp</>}
             </Button>
           )}
           {!data.enabled && !isConnected && (
@@ -878,39 +877,48 @@ const WhatsAppCard = () => {
             </p>
           )}
         </div>
-      </div>
 
-      {/* Modal QR — fullscreen overlay */}
-      {qrOpen && (
-        <div className="fixed inset-0 z-50 bg-background/90 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-md w-full p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-black uppercase tracking-tight">Escanear QR</h3>
-              <Button onClick={() => setQrOpen(false)} variant="ghost" size="sm" className="h-8 px-2 text-[11px]">Cancelar</Button>
+        {/* QR inline — visible mientras status sea pending_qr.
+            Queda fijo en la card hasta que el cliente del local lo escanee. */}
+        {status === 'pending_qr' && (
+          <div className="border-t border-border bg-background/40 px-4 py-5">
+            <div className="max-w-xs mx-auto">
+              <p className="text-[11px] text-muted-foreground font-bold mb-3 leading-relaxed text-center">
+                Abrí WhatsApp en el celular del negocio →
+                <br />
+                <span className="text-foreground">Configuración → Dispositivos vinculados → Vincular un dispositivo</span>
+              </p>
+              {data.qrCode ? (
+                <div className="bg-white p-3 rounded-lg flex items-center justify-center shadow-md">
+                  <img
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(data.qrCode)}`}
+                    alt="QR WhatsApp"
+                    className="w-full h-auto"
+                  />
+                </div>
+              ) : (
+                <div className="py-12 flex flex-col items-center gap-3 bg-background rounded-lg border border-border">
+                  <Loader2 className="w-10 h-10 animate-spin text-primary" />
+                  <p className="text-xs font-bold text-muted-foreground uppercase">Generando QR...</p>
+                </div>
+              )}
+              <p className="text-[10px] text-muted-foreground font-bold text-center mt-3 tabular-nums flex items-center justify-center gap-2">
+                <StatusDot status={status} />
+                <span>Esperando escaneo · auto-refresh 2s</span>
+              </p>
+              <Button
+                onClick={handleDisconnect}
+                disabled={busyAction !== null}
+                variant="ghost"
+                size="sm"
+                className="w-full h-9 text-[11px] font-bold uppercase tracking-wide text-muted-foreground hover:text-red-400 mt-2"
+              >
+                {busyAction === 'disconnect' ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Cancelar y reintentar'}
+              </Button>
             </div>
-            <p className="text-xs text-muted-foreground font-bold mb-4">
-              Abrí WhatsApp en el celular del negocio → Configuración → Dispositivos vinculados → Vincular un dispositivo.
-            </p>
-            {data.qrCode ? (
-              <div className="bg-white p-4 rounded-lg flex items-center justify-center">
-                <img
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(data.qrCode)}`}
-                  alt="QR WhatsApp"
-                  className="w-full h-auto"
-                />
-              </div>
-            ) : (
-              <div className="py-16 flex flex-col items-center gap-3">
-                <Loader2 className="w-10 h-10 animate-spin text-primary" />
-                <p className="text-xs font-bold text-muted-foreground uppercase">Esperando QR...</p>
-              </div>
-            )}
-            <p className="text-[10px] text-muted-foreground font-bold text-center mt-4 tabular-nums">
-              Polling cada 2s · Estado: <StatusDot status={status} />
-            </p>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </>
   );
 };
