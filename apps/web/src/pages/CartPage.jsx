@@ -415,27 +415,10 @@ const CartPage = () => {
               messageSent: !!data.messageSent,
               phoneNormalized: data.phoneNormalized || phoneNormalized,
               reason: data.reason,
-              error: data.error,
             };
-            if (!data.messageSent) {
-              const why = data.reason || data.error || 'sin razón explícita';
-              console.warn('[CartPage] WA bancario no enviado:', why);
-              toast.warning(`No pudimos mandarte el WA con los datos bancarios (${why}). Vas a verlos en la próxima pantalla.`);
-            }
-          } else {
-            // Endpoint 404/500/HTML — surfacear para diagnóstico (típicamente
-            // significa que el deploy del API en VPS no está al día).
-            const text = ctype.includes('application/json')
-              ? JSON.stringify(await res.json().catch(() => ({})))
-              : await res.text().catch(() => '');
-            console.error('[CartPage] send-bank-transfer-info HTTP', res.status, text.slice(0, 200));
-            bankWa.reason = `API HTTP ${res.status}`;
-            toast.warning(`No se pudo notificar por WhatsApp (HTTP ${res.status}). Te mostramos los datos bancarios en la próxima pantalla.`);
           }
         } catch (err) {
           console.warn('[CartPage] send-bank-transfer-info failed:', err);
-          bankWa.reason = err?.message || 'Error de red';
-          toast.warning(`No se pudo notificar por WhatsApp (${bankWa.reason}). Te mostramos los datos bancarios en la próxima pantalla.`);
         }
       }
 
