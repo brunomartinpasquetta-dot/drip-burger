@@ -629,6 +629,12 @@ const WhatsAppCard = () => {
   const [loadError, setLoadError] = useState(null);
   const [busyAction, setBusyAction] = useState(null); // 'connect' | 'disconnect' | 'test' | 'toggle'
   const [testPhone, setTestPhone] = useState('');
+  // Cacheamos el último QR válido recibido. WhatsApp regenera el QR cada
+  // ~20s y entre regeneraciones el backend devuelve qrCode:null
+  // momentáneamente — sin caché veríamos un spinner parpadeando. Con caché
+  // siempre mostramos un QR (el último visto) hasta que llegue el próximo
+  // o el status pase a 'connected'.
+  const [stickyQr, setStickyQr] = useState(null);
   const pollingRef = useRef(null);
 
   const load = useCallback(async () => {
@@ -636,6 +642,13 @@ const WhatsAppCard = () => {
     try {
       const res = await waStatus();
       setData(res || null);
+      // Persistir el último QR válido. Sólo lo limpiamos cuando ya está
+      // conectado o desconectado a propósito (no entre regeneraciones).
+      if (res?.qrCode) {
+        setStickyQr(res.qrCode);
+      } else if (res?.status === 'connected' || res?.status === 'disconnected') {
+        setStickyQr(null);
+      }
     } catch (err) {
       console.error('[WhatsAppCard] status failed:', err);
       setLoadError(err);
@@ -650,12 +663,15 @@ const WhatsAppCard = () => {
     load();
   }, [isAuthReady, currentUser, load]);
 
-  // Polling automático cada 2s mientras el status sea pending_qr — el QR vive
-  // inline en la card, no en un modal, así queda fijo en pantalla hasta que
-  // el cliente del local lo escanee y la conexión pase a 'connected'.
+  // Polling automático cada 2s mientras el status sea pending_qr o tengamos
+  // un QR cacheado pendiente de scan. El QR vive inline en la card y queda
+  // fijo en pantalla hasta que el cliente del local lo escanee y la conexión
+  // pase a 'connected'.
   useEffect(() => {
-    const isPending = data?.status === 'pending_qr';
-    if (!isPending) {
+    const isConnectedNow = data?.status === 'connected';
+    const shouldPoll =
+      data?.status === 'pending_qr' || (!!stickyQr && !isConnectedNow);
+    if (!shouldPoll) {
       if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
       return;
     }
@@ -663,7 +679,9 @@ const WhatsAppCard = () => {
       try {
         const res = await waStatus();
         setData(res);
+        if (res?.qrCode) setStickyQr(res.qrCode);
         if (res.status === 'connected') {
+          setStickyQr(null);
           clearInterval(pollingRef.current);
           pollingRef.current = null;
           toast.success('WhatsApp conectado correctamente');
@@ -673,7 +691,7 @@ const WhatsAppCard = () => {
     return () => {
       if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
     };
-  }, [data?.status]);
+  }, [data?.status, stickyQr]);
 
   const handleConnect = async () => {
     setBusyAction('connect');
@@ -697,6 +715,7 @@ const WhatsAppCard = () => {
     setBusyAction('disconnect');
     try {
       await waDisconnect();
+      setStickyQr(null);
       toast.success('WhatsApp desconectado');
       await load();
     } catch (err) {
@@ -878,9 +897,11 @@ const WhatsAppCard = () => {
           )}
         </div>
 
-        {/* QR inline — visible mientras status sea pending_qr.
-            Queda fijo en la card hasta que el cliente del local lo escanee. */}
-        {status === 'pending_qr' && (
+        {/* QR inline — visible mientras status sea pending_qr O exista un
+            QR cacheado y todavía no estemos conectados. Esto cubre el gap
+            entre regeneraciones (qrCode null momentáneo) y mantiene el QR
+            fijo en la card hasta que el cliente del local lo escanee. */}
+        {(status === 'pending_qr' || (stickyQr && !isConnected)) && (
           <div className="border-t border-border bg-background/40 px-4 py-5">
             <div className="max-w-xs mx-auto">
               <p className="text-[11px] text-muted-foreground font-bold mb-3 leading-relaxed text-center">
@@ -888,10 +909,10 @@ const WhatsAppCard = () => {
                 <br />
                 <span className="text-foreground">Configuración → Dispositivos vinculados → Vincular un dispositivo</span>
               </p>
-              {data.qrCode ? (
+              {(stickyQr || data.qrCode) ? (
                 <div className="bg-white p-3 rounded-lg flex items-center justify-center shadow-md">
                   <img
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(data.qrCode)}`}
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(stickyQr || data.qrCode)}`}
                     alt="QR WhatsApp"
                     className="w-full h-auto"
                   />
