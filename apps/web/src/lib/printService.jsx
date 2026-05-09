@@ -14,6 +14,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import PrintTicketDelivery from '@/components/PrintTicketDelivery.jsx';
 import PrintKitchenOrder from '@/components/PrintKitchenOrder.jsx';
+import PrintCierreCaja from '@/components/PrintCierreCaja.jsx';
 
 let activeRoot = null;
 let cleanupTimer = null;
@@ -118,6 +119,15 @@ export async function printKitchenOrder(orders, timeSlot) {
   const list = Array.isArray(orders) ? orders : (orders ? [orders] : []);
   if (list.length === 0) throw new Error('No hay pedidos para imprimir');
   await printNode(<PrintKitchenOrder orders={list} timeSlot={timeSlot} />);
+}
+
+/**
+ * Imprime el ticket de cierre de jornada (caja).
+ * @param {Object} data — totales y metadata de la jornada (ver PrintCierreCaja).
+ */
+export async function printCierreCaja(data) {
+  if (!data) throw new Error('No hay datos de jornada para imprimir');
+  await printNode(<PrintCierreCaja data={data} />);
 }
 
 /**

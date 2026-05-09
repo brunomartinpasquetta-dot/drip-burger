@@ -29,6 +29,7 @@ import MenuPreviewContent from './admin/MenuPreviewContent.jsx';
 import {
   printTicketDelivery,
   printKitchenOrder,
+  printCierreCaja,
 } from '@/lib/printService.jsx';
 import { toast } from 'sonner';
 
@@ -771,12 +772,13 @@ const CajaCard = ({ currentUserId, jornada, jornadaLoading, refreshKey, onJornad
       return;
     }
     setClosing(true);
+    const horaCierreNow = horaActualAr();
     try {
       await pb.collection('jornadas').update(
         jornada.id,
         {
           estado: 'cerrada',
-          horaCierre: horaActualAr(),
+          horaCierre: horaCierreNow,
           montoCierre: Math.max(0, montoCierreNum),
           totalEfectivo: cobrosEfectivo,
           totalTransferencias: cobrosTransferencia,
@@ -791,6 +793,38 @@ const CajaCard = ({ currentUserId, jornada, jornadaLoading, refreshKey, onJornad
       setMontoCierre('');
       setCloseOpen(false);
       toast.success('Jornada cerrada correctamente');
+
+      // Imprimir ticket de cierre — best-effort, si falla la impresión no
+      // rollbackeamos el cierre porque la jornada YA está guardada en PB.
+      try {
+        const totalFacturado =
+          (Number(cobrosEfectivo) || 0) +
+          (Number(cobrosTransferenciaBancaria) || 0) +
+          (Number(cobrosMercadopago) || 0);
+        await printCierreCaja({
+          fecha: jornada.fecha || new Date().toISOString(),
+          horaApertura: jornada.horaApertura,
+          horaCierre: horaCierreNow,
+          adminNombre: jornada.expand?.adminId?.nombre_apellido || jornada.expand?.adminId?.email || '',
+          totalPedidos: totalPedidosJornada,
+          pedidosCancelados,
+          montoCancelados,
+          cobrosEfectivo,
+          cobrosTransferenciaBancaria,
+          cobrosMercadopago,
+          fondoInicial,
+          ingresosManuales,
+          egresosManuales,
+          efectivoEsperado,
+          montoCierre: Math.max(0, montoCierreNum),
+          cuadre,
+          totalFacturado,
+        });
+      } catch (printErr) {
+        console.warn('[CajaCard] print cierre failed:', printErr);
+        toast.warning('Jornada cerrada, pero no se pudo abrir el diálogo de impresión.');
+      }
+
       if (onJornadaChange) onJornadaChange();
     } catch (err) {
       console.error('[CajaCard] close failed:', err?.response?.data || err);

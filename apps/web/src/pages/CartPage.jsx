@@ -141,6 +141,7 @@ const CartPage = () => {
     zona,
     precios,
     loading: shippingLoading,
+    notFound: shippingNotFound,
     formatShipping,
   } = useShippingPrice(formData.direccion);
 
@@ -246,6 +247,8 @@ const CartPage = () => {
     if (!phoneCheck.valid) newErrors.telefono = true;
     // Take Away: no se pide dirección.
     if (!formData.takeAway && !formData.direccion.trim()) newErrors.direccion = true;
+    // Dirección fuera del área de cobertura (geocoding no la encontró en Coronda).
+    if (!formData.takeAway && shippingNotFound) newErrors.direccion = true;
     if (!formData.horario_reparto) newErrors.horario_reparto = true;
     if (!formData.forma_pago) newErrors.forma_pago = true;
 
@@ -711,6 +714,18 @@ const CartPage = () => {
                         errors.direccion && "border-destructive bg-destructive/10 focus-visible:ring-destructive"
                       )}
                     />
+                    {/* Estado del geocoding: cargando, fuera de cobertura, o zona resuelta */}
+                    {formData.direccion.trim() && shippingLoading && (
+                      <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground px-2.5 py-1.5">
+                        Verificando dirección...
+                      </div>
+                    )}
+                    {formData.direccion.trim() && !shippingLoading && shippingNotFound && (
+                      <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-wider px-2.5 py-1.5 rounded border text-red-400 border-red-500/40 bg-red-500/10">
+                        <span className="text-[8px]">●</span>
+                        <span>Dirección fuera del área de envío de Coronda. Revisá calle y número.</span>
+                      </div>
+                    )}
                     {formData.direccion.trim() && !shippingLoading && zona && (
                       <div
                         className={cn(
