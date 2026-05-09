@@ -162,6 +162,87 @@ const PROVIDERS = [
 	{ name: 'photon', fn: tryPhoton },
 ];
 
+// ── Fallback manual: calles conocidas de Coronda ────────────────────────
+// Cuando los 3 geocoders fallan o devuelven coords fuera del bbox de
+// Coronda (típicamente porque la calle está mal indexada en OSM/Georef),
+// matcheamos por nombre y devolvemos la zona directamente sin lat/lng.
+//
+// Cómo agregar una calle: poná el nombre normalizado (lowercase, sin
+// tildes ni puntos, sin "calle/av") en la lista de la zona correspondiente.
+// El match es bidireccional case-insensitive (substring), así que aceptás
+// abreviaturas razonables ("san martin" matchea "calle san martin 1500").
+const STREETS_CENTRO_CORONDA = [
+	'san martin',
+	'san jeronimo',
+	'belgrano',
+	'sarmiento',
+	'rivadavia',
+	'mitre',
+	'moreno',
+	'italia',
+	'espana',
+	'9 de julio',
+	'25 de mayo',
+	'eva peron',
+	'saavedra',
+	'falucho',
+	'pringles',
+	'fray mamerto esquiu',
+	'fray m esquiu',
+	'almafuerte',
+	'cervantes',
+	'lisandro de la torre',
+	'sarah zabala',
+	'luciano molinas',
+	'chizzini melo',
+	'santo tome',
+	'maciel',
+	'almte brown',
+	'almirante brown',
+	'arocena',
+	'bv orono',
+	'bulevar orono',
+	'orono',
+	'guemes',
+	'garay',
+	'juan de garay',
+	'alberdi',
+	'derqui',
+	'general lopez',
+	'hipolito yrigoyen',
+	'hipolito irigoyen',
+	'yrigoyen',
+	'irigoyen',
+	'av hector lopez',
+	'hector lopez',
+];
+
+// Normaliza el string libre del usuario para matcheo: lowercase, sin
+// tildes, sin puntos/comas, prefijos de calle removidos, espacios
+// colapsados. Devuelve solo la parte del nombre de calle (sin altura).
+const normalizeStreetName = (raw) => {
+	if (!raw) return '';
+	let t = String(raw)
+		.toLowerCase()
+		.normalize('NFD')
+		.replace(/[̀-ͯ]/g, '')
+		.replace(/[.,]/g, ' ')
+		.replace(/\s+/g, ' ')
+		.trim();
+	t = t.replace(/^(av|avenida|calle|pje|pasaje|bv|bulevar)\s+/i, '');
+	// Sacar la altura (números) — nos quedamos con el nombre
+	t = t.replace(/\b\d+\b/g, '').replace(/\s+/g, ' ').trim();
+	return t;
+};
+
+const matchesKnownCentroStreet = (rawAddress) => {
+	const street = normalizeStreetName(rawAddress);
+	if (!street) return false;
+	return STREETS_CENTRO_CORONDA.some(
+		(known) => street.includes(known) || known.includes(street)
+	);
+};
+
 // ── Point in polygon (ray-casting). polygon = [[lng,lat],...]. ───────────
 const pointInPolygon = (point, polygon) => {
 	const x = point.lng;
@@ -224,6 +305,19 @@ export const determinarZonaV2 = async (direccion) => {
 		const zona = isInCentro(p) ? 'centro' : 'alejada';
 		const result = { zona, lat: p.lat, lng: p.lng, source: name, display: p.display };
 		log('  → zona', zona);
+		cache.set(key, result);
+		persistCache();
+		return result;
+	}
+
+	// Fallback: ningún geocoder resolvió. Si reconocemos la calle como una
+	// de las del casco céntrico de Coronda, asumimos zona centro sin coords
+	// y dejamos pasar el pedido (mejor cobrar centro que rechazar al cliente
+	// por un bug del geocoder). Esto cubre calles cortas tipo "España",
+	// "Mitre" y similares que OSM/Georef tienen mal indexadas.
+	if (matchesKnownCentroStreet(text)) {
+		log('fallback por nombre de calle — calle conocida de Coronda centro');
+		const result = { zona: 'centro', lat: null, lng: null, source: 'manual', display: text };
 		cache.set(key, result);
 		persistCache();
 		return result;
