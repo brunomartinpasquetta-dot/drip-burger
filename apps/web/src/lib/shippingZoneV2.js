@@ -26,16 +26,21 @@ const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
 const GEOREF_URL = 'https://apis.datos.gob.ar/georef/api/direcciones';
 const PHOTON_URL = 'https://photon.komoot.io/api';
 
-// Viewbox de Coronda + alrededores (cubre todo el ejido y rural cercano).
-// Coronda está en lat -31.97, lng -60.92 aprox. Margen generoso en todas
-// direcciones para que Nominatim no descarte direcciones del borde.
-const NOMINATIM_VIEWBOX = '-61.00,-31.92,-60.85,-32.05';
+// Viewbox EXACTO del standalone zonificador-coronda-v4.html (const BBOX).
+// REGLA: paridad 1:1 con el standalone — cualquier desvío hace que Nominatim
+// devuelva coords distintas y la app diverja del HTML de referencia que el
+// negocio usó para dibujar el polígono. NO aproximar este valor.
+// Formato Nominatim viewbox: minLng,maxLat,maxLng,minLat
+const NOMINATIM_VIEWBOX = '-60.95,-31.94,-60.88,-32.00';
 
-// bbox para post-filter: descarta resultados que cayeron en otra ciudad
-// (Santa Fe Capital, Rosario, San Carlos Centro, etc).
-const CORONDA_BBOX = { minLng: -61.00, minLat: -32.05, maxLng: -60.85, maxLat: -31.92 };
+// bbox para post-filter — DERIVADO del viewbox de arriba (mismo rectángulo).
+// El standalone confía en bounded=1 (Nominatim no devuelve nada fuera del
+// viewbox); replicamos eso acá descartando cualquier coord fuera.
+const CORONDA_BBOX = { minLng: -60.95, minLat: -32.00, maxLng: -60.88, maxLat: -31.94 };
 
-const CACHE_KEY = 'dripburger:geocode:v1';
+// v2: bump tras corregir el viewbox de Nominatim al del standalone — invalida
+// los entries stale que se cachearon con el viewbox ancho equivocado.
+const CACHE_KEY = 'dripburger:geocode:v2';
 const memCache = new Map();
 
 const loadCache = () => {
