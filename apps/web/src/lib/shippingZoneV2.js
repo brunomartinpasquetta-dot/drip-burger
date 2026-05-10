@@ -27,21 +27,24 @@ const GEOREF_URL = 'https://apis.datos.gob.ar/georef/api/direcciones';
 const PHOTON_URL = 'https://photon.komoot.io/api';
 
 // Viewbox EXACTO del standalone zonificador-coronda-v4.html (const BBOX).
-// REGLA: paridad 1:1 con el standalone — cualquier desvío hace que Nominatim
-// devuelva coords distintas y la app diverja del HTML de referencia que el
-// negocio usó para dibujar el polígono. NO aproximar este valor.
+// Sólo afecta a Nominatim: paridad 1:1 con el HTML que el negocio usó para
+// dibujar el polígono — cualquier desvío hace que Nominatim devuelva coords
+// distintas para las direcciones del casco céntrico. NO aproximar este valor.
 // Formato Nominatim viewbox: minLng,maxLat,maxLng,minLat
 const NOMINATIM_VIEWBOX = '-60.95,-31.94,-60.88,-32.00';
 
-// bbox para post-filter — DERIVADO del viewbox de arriba (mismo rectángulo).
-// El standalone confía en bounded=1 (Nominatim no devuelve nada fuera del
-// viewbox); replicamos eso acá descartando cualquier coord fuera.
-const CORONDA_BBOX = { minLng: -60.95, minLat: -32.00, maxLng: -60.88, maxLat: -31.94 };
+// bbox AMPLIO para el post-filter de Georef/Photon (esos NO usan viewbox).
+// Cubre todo el ejido de Coronda + zona rural cercana, así una dirección
+// real pero a las afueras del centro (que Nominatim no devuelve por
+// bounded=1) sí la captura Georef/Photon → cae fuera del polígono CENTRO
+// → se clasifica como 'alejada' (deliverable, tarifa alejada) en vez de
+// rebotar como notFound. Lo que queda FUERA de este bbox sí es notFound
+// (otra ciudad → no entregamos ahí).
+const CORONDA_BBOX = { minLng: -61.00, minLat: -32.05, maxLng: -60.85, maxLat: -31.92 };
 
-// v3: bump tras (a) corregir el viewbox al del standalone y (b) sacar el
-// fallback por nombre de calle que validaba alturas inexistentes. Invalida
-// entries stale del localStorage de los clientes.
-const CACHE_KEY = 'dripburger:geocode:v3';
+// v4: bump tras separar viewbox (tight, para paridad Nominatim) de bbox
+// (amplio, para que Georef/Photon capturen las afueras como 'alejada').
+const CACHE_KEY = 'dripburger:geocode:v4';
 const memCache = new Map();
 
 const loadCache = () => {
