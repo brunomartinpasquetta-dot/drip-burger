@@ -1,14 +1,17 @@
 // Servicio de impresión multiplataforma — usa window.print() del navegador
 // y el driver del sistema operativo. Compatible con cualquier impresora
-// (térmica 80mm, A4, red, WiFi). Sin drivers especiales del navegador.
+// (térmica POS-58, POS-80, A4, red, WiFi). Sin drivers especiales.
 //
 // Flujo:
 //   1) Mount del componente React correspondiente en #print-area (ReactDOM root)
-//   2) body.classList.add('printing') + flush sincrónico
-//   3) window.print()  (modal del navegador)
-//   4) afterprint → unmount + remove class
+//   2) body.classList.add('printing') + body.classList.add('printing-58|80')
+//   3) window.print()
+//   4) afterprint → unmount + remove classes
 //
 // Si afterprint no se dispara (Safari raro), un timeout de 10s limpia igual.
+//
+// El ancho ('58'|'80') decide el layout via CSS body.printing-58/80. Default
+// '80' por compat — drip-burger venía operando con 80mm.
 
 import React from 'react';
 import { createRoot } from 'react-dom/client';
@@ -42,10 +45,12 @@ const cleanup = () => {
   }
   if (typeof document !== 'undefined') {
     document.body.classList.remove('printing');
+    document.body.classList.remove('printing-58');
+    document.body.classList.remove('printing-80');
   }
 };
 
-const printNode = async (node) => {
+const printNode = async (node, width = '80') => {
   const area = getPrintArea();
   if (!area) throw new Error('No se pudo encontrar el área de impresión');
 
@@ -62,6 +67,9 @@ const printNode = async (node) => {
       // React + el browser para flushear el DOM antes de invocar print().
       // Sin esto, en Chrome a veces el window.print() agarra el área vacía.
       document.body.classList.add('printing');
+      // Layout 58 o 80 mm — el CSS body.printing-58/80 hace el override
+      // del width, padding y font-size del #print-area.
+      document.body.classList.add(width === '58' ? 'printing-58' : 'printing-80');
 
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
@@ -104,37 +112,41 @@ const printNode = async (node) => {
 /**
  * Imprime un ticket de delivery (con dirección, total, estado de pago).
  * @param {Object} order
+ * @param {'58'|'80'} [width='80']
  */
-export async function printTicketDelivery(order) {
+export async function printTicketDelivery(order, width = '80') {
   if (!order) throw new Error('Falta el pedido para imprimir');
-  await printNode(<PrintTicketDelivery order={order} />);
+  await printNode(<PrintTicketDelivery order={order} />, width);
 }
 
 /**
  * Imprime una comanda de cocina. Acepta un pedido o un array de pedidos.
  * @param {Object|Array<Object>} orders
  * @param {string} [timeSlot]
+ * @param {'58'|'80'} [width='80']
  */
-export async function printKitchenOrder(orders, timeSlot) {
+export async function printKitchenOrder(orders, timeSlot, width = '80') {
   const list = Array.isArray(orders) ? orders : (orders ? [orders] : []);
   if (list.length === 0) throw new Error('No hay pedidos para imprimir');
-  await printNode(<PrintKitchenOrder orders={list} timeSlot={timeSlot} />);
+  await printNode(<PrintKitchenOrder orders={list} timeSlot={timeSlot} />, width);
 }
 
 /**
  * Imprime el ticket de cierre de jornada (caja).
  * @param {Object} data — totales y metadata de la jornada (ver PrintCierreCaja).
+ * @param {'58'|'80'} [width='80']
  */
-export async function printCierreCaja(data) {
+export async function printCierreCaja(data, width = '80') {
   if (!data) throw new Error('No hay datos de jornada para imprimir');
-  await printNode(<PrintCierreCaja data={data} />);
+  await printNode(<PrintCierreCaja data={data} />, width);
 }
 
 /**
  * Ticket dummy para verificar que la impresión está bien configurada
  * desde /gestion/config.
+ * @param {'58'|'80'} [width='80']
  */
-export async function printTestTicket() {
+export async function printTestTicket(width = '80') {
   const dummyOrder = {
     id: 'TEST',
     orderNumber: 'TEST-' + new Date().toLocaleTimeString('es-AR'),
@@ -152,5 +164,5 @@ export async function printTestTicket() {
     paymentMethod: 'Efectivo',
     paymentStatus: 'Pendiente',
   };
-  await printTicketDelivery(dummyOrder);
+  await printTicketDelivery(dummyOrder, width);
 }

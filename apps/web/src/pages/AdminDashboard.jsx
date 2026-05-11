@@ -102,7 +102,7 @@ const URGENCY_RING = {
   normal: '',
 };
 
-const KitchenView = ({ orders, onSendToKitchen, onMarkReady, isPending }) => {
+const KitchenView = ({ orders, onSendToKitchen, onMarkReady, isPending, comandaWidth = '80' }) => {
   const [selectedSlot, setSelectedSlot] = useState('all');
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [showAggregated, setShowAggregated] = useState(false);
@@ -123,7 +123,7 @@ const KitchenView = ({ orders, onSendToKitchen, onMarkReady, isPending }) => {
     setPrintBusy(true);
     toast('Abriendo diálogo de impresión...');
     try {
-      await printKitchenOrder(pending, selectedSlot === 'all' ? 'TODOS' : selectedSlot);
+      await printKitchenOrder(pending, selectedSlot === 'all' ? 'TODOS' : selectedSlot, comandaWidth);
     } catch (err) {
       toast.error('Error al imprimir: ' + (err.message || err));
     } finally {
@@ -219,7 +219,8 @@ const KitchenView = ({ orders, onSendToKitchen, onMarkReady, isPending }) => {
       try {
         await printKitchenOrder(
           ordersToSend,
-          selectedSlot === 'all' ? 'TODOS' : selectedSlot
+          selectedSlot === 'all' ? 'TODOS' : selectedSlot,
+          comandaWidth
         );
       } catch (err) {
         toast.error('Error al imprimir: ' + (err.message || err));
@@ -234,7 +235,7 @@ const KitchenView = ({ orders, onSendToKitchen, onMarkReady, isPending }) => {
     setPrintBusy(true);
     toast('Abriendo diálogo de impresión...');
     try {
-      await printKitchenOrder([order], order.deliveryTimeSlot || 'TODOS');
+      await printKitchenOrder([order], order.deliveryTimeSlot || 'TODOS', comandaWidth);
     } catch (err) {
       toast.error('Error al imprimir: ' + (err.message || err));
     } finally {
@@ -607,7 +608,7 @@ const timeOfDayAr = (iso) => {
   }
 };
 
-const CajaCard = ({ currentUserId, jornada, jornadaLoading, refreshKey, onJornadaChange }) => {
+const CajaCard = ({ currentUserId, jornada, jornadaLoading, refreshKey, onJornadaChange, comandaWidth = '80' }) => {
   const [jornadaOrders, setJornadaOrders] = useState([]);
   const [movimientos, setMovimientos] = useState([]);
 
@@ -819,7 +820,7 @@ const CajaCard = ({ currentUserId, jornada, jornadaLoading, refreshKey, onJornad
           montoCierre: Math.max(0, montoCierreNum),
           cuadre,
           totalFacturado,
-        });
+        }, comandaWidth);
       } catch (printErr) {
         console.warn('[CajaCard] print cierre failed:', printErr);
         toast.warning('Jornada cerrada, pero no se pudo abrir el diálogo de impresión.');
@@ -1224,6 +1225,11 @@ const AdminDashboard = () => {
   const [pendingIds, setPendingIds] = useState(() => new Set());
   const [slotOccupancy, setSlotOccupancy] = useState([]);
   const [maxMedallionsPerSlot, setMaxMedallionsPerSlot] = useState(20);
+  // Ancho del rollo de la impresora térmica — '58' o '80'. Lo lee de
+  // settings.comanda_width (default '80'). Se pasa a TODAS las llamadas
+  // de printTicketDelivery / printKitchenOrder / printCierreCaja para
+  // que el CSS aplique el layout correcto al imprimir.
+  const [comandaWidth, setComandaWidth] = useState('80');
   const [activeTab, setActiveTab] = useState('orders');
   const [jornadaActiva, setJornadaActiva] = useState(null);
   const [jornadaLoading, setJornadaLoading] = useState(true);
@@ -1284,7 +1290,7 @@ const AdminDashboard = () => {
     setPrintBusy(true);
     toast('Abriendo diálogo de impresión...');
     try {
-      await printTicketDelivery(order);
+      await printTicketDelivery(order, comandaWidth);
     } catch (err) {
       toast.error('Error al imprimir: ' + (err.message || err));
     } finally {
@@ -1423,6 +1429,26 @@ const AdminDashboard = () => {
     fetchOccupancy();
     const id = setInterval(fetchOccupancy, 30000);
     return () => { cancelled = true; clearInterval(id); };
+  }, []);
+
+  // Cargar ancho del rollo de impresora desde settings al mount. Si cambia
+  // desde /gestion/config, la próxima recarga del dashboard lo trae.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = await pb.collection('settings').getList(1, 1, { requestKey: null });
+        if (cancelled) return;
+        if (list.items.length > 0) {
+          const w = list.items[0].comanda_width;
+          if (w === '58' || w === '80') setComandaWidth(w);
+        }
+      } catch (err) {
+        // Si falla la lectura mantenemos default '80' — no es crítico.
+        console.warn('[AdminDashboard] no se pudo leer comanda_width:', err?.message || err);
+      }
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   const loadData = async () => {
@@ -2226,6 +2252,7 @@ const AdminDashboard = () => {
                   onSendToKitchen={handleSendToKitchen}
                   onMarkReady={handleMarkReady}
                   isPending={isPending}
+                  comandaWidth={comandaWidth}
                 />
               )}
             </TabsContent>
@@ -2503,6 +2530,7 @@ const AdminDashboard = () => {
                 jornadaLoading={jornadaLoading}
                 refreshKey={cajaRefreshKey}
                 onJornadaChange={() => { refetchJornada(); loadData(); }}
+                comandaWidth={comandaWidth}
               />
             </TabsContent>
 

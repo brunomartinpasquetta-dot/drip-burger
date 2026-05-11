@@ -24,7 +24,6 @@ import {
   Clock,
   Save,
   Printer,
-  ExternalLink,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -34,6 +33,7 @@ import {
 import { computeIsOpen } from '@/hooks/useStoreHours';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 import { printTestTicket } from '@/lib/printService.jsx';
+import { cn } from '@/lib/utils.js';
 
 const formatShippingPreview = (price) => {
   const num = Number(price) || 0;
@@ -524,12 +524,56 @@ const TransferenciaCard = () => {
 // ══════════════════════════════════════════════════════════════════
 const PrinterCard = () => {
   const [busy, setBusy] = useState(false);
+  // Ancho del rollo: '58' o '80'. Lo persistimos en settings.comanda_width
+  // (PB) y lo lee AdminDashboard al boot para mandar el width correcto a
+  // las funciones de impresión.
+  const [width, setWidth] = useState('80');
+  const [settingsId, setSettingsId] = useState(null);
+  const [savingWidth, setSavingWidth] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const list = await pb.collection('settings').getList(1, 1, { requestKey: null });
+        if (!mounted) return;
+        if (list.items.length > 0) {
+          setSettingsId(list.items[0].id);
+          const w = list.items[0].comanda_width;
+          if (w === '58' || w === '80') setWidth(w);
+        }
+      } catch { /* default '80' */ }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  const handleWidthChange = async (next) => {
+    if (next === width || savingWidth) return;
+    const prev = width;
+    setWidth(next);
+    setSavingWidth(true);
+    try {
+      if (settingsId) {
+        await pb.collection('settings').update(settingsId, { comanda_width: next }, { requestKey: null });
+      } else {
+        const created = await pb.collection('settings').create({ comanda_width: next }, { requestKey: null });
+        setSettingsId(created.id);
+      }
+      toast.success(`Ancho del rollo: ${next}mm`);
+    } catch (err) {
+      setWidth(prev);
+      const status = err?.status || err?.response?.status;
+      toast.error(`No se pudo guardar el ancho (${status || 'error'})`);
+    } finally {
+      setSavingWidth(false);
+    }
+  };
 
   const doTest = async () => {
     setBusy(true);
     toast('Abriendo diálogo de impresión...');
     try {
-      await printTestTicket();
+      await printTestTicket(width);
     } catch (err) {
       toast.error('Error al imprimir: ' + (err?.message || err));
     } finally {
@@ -551,6 +595,39 @@ const PrinterCard = () => {
           Las impresiones usan el <span className="text-foreground font-black">sistema de impresión de la computadora</span>.
           Configurá la impresora térmica como <span className="text-foreground font-black">predeterminada</span> en
           Windows o macOS, y activá <span className="text-foreground font-black">"corte automático"</span> en sus propiedades.
+        </p>
+      </div>
+
+      {/* Selector de ancho del rollo — 58mm o 80mm. Se persiste en
+          settings.comanda_width y AdminDashboard lo pasa a cada
+          llamada de printTicketDelivery / printKitchenOrder /
+          printCierreCaja para que el CSS aplique el layout correcto. */}
+      <div className="px-4 pb-3">
+        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">
+          Ancho del rollo
+        </p>
+        <div className="inline-flex rounded-md border border-border overflow-hidden">
+          {['58', '80'].map((w) => (
+            <button
+              key={w}
+              type="button"
+              onClick={() => handleWidthChange(w)}
+              disabled={savingWidth}
+              className={cn(
+                "px-4 py-1.5 text-xs font-black uppercase tracking-wider transition-colors",
+                width === w
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-transparent text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {w}mm
+            </button>
+          ))}
+        </div>
+        <p className="text-[10px] text-muted-foreground font-medium mt-1.5 leading-relaxed">
+          {width === '58'
+            ? 'Rollo chico (POS-58). Texto compacto.'
+            : 'Rollo estándar (POS-80). Texto grande.'}
         </p>
       </div>
 
