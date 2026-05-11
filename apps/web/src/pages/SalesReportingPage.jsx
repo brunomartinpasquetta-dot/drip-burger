@@ -15,6 +15,7 @@ import { DollarSign, ShoppingBag, Banknote, CreditCard, Truck, Calendar, ArrowLe
 import { toast } from 'sonner';
 import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays, subMonths, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { FORMA_PAGO } from '@/lib/orderConstants';
 
 const formatPrice = (price) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(price || 0);
@@ -89,7 +90,13 @@ export const ReportsContent = () => {
     try {
       const fromObj = startOfDay(parseISO(range.from));
       const toObj = endOfDay(parseISO(range.to));
-      const filterString = `orderStatus='Finalizado' && created >= "${fromObj.toISOString()}" && created <= "${toObj.toISOString()}"`;
+      // Filtramos por paymentStatus='Pagado' (caja real cobrada), no por
+      // orderStatus='Finalizado'. En la práctica los admins rara vez marcan
+      // un pedido como "Finalizado" — lo cobran y lo dejan en "En camino" o
+      // "Listo". Con el filtro viejo reportes quedaba vacío aunque hubiera
+      // entrada de plata. Excluimos Cancelado por si quedó pagado y luego
+      // cancelado (caso raro pero posible).
+      const filterString = `paymentStatus='Pagado' && orderStatus != 'Cancelado' && created >= "${fromObj.toISOString()}" && created <= "${toObj.toISOString()}"`;
 
       const results = await pb.collection('orders').getFullList({
         filter: filterString,
@@ -107,6 +114,20 @@ export const ReportsContent = () => {
   };
 
   // ── Cómputos agregados ───────────────────────────────────────────
+  // Notas:
+  //  - Comparamos contra FORMA_PAGO (constantes) en vez de strings sueltos.
+  //  - Mercado Pago se separa de Transferencia bancaria — antes ningún caso
+  //    capturaba MP y se perdía en el limbo (no aparecía en ningún total).
+  //  - El método se normaliza también desde paymentMethod legacy ("efectivo"
+  //    minúscula de pedidos viejos) para que el histórico siga sumando.
+  const normalizeMethod = (raw) => {
+    const s = String(raw || '').trim().toLowerCase();
+    if (s === FORMA_PAGO.EFECTIVO.toLowerCase()) return FORMA_PAGO.EFECTIVO;
+    if (s === FORMA_PAGO.TRANSFERENCIA.toLowerCase()) return FORMA_PAGO.TRANSFERENCIA;
+    if (s === FORMA_PAGO.MERCADOPAGO.toLowerCase()) return FORMA_PAGO.MERCADOPAGO;
+    return '';
+  };
+
   const stats = (() => {
     let totalOrders = 0;
     let totalSubtotal = 0;
@@ -116,6 +137,8 @@ export const ReportsContent = () => {
     let efectivoCount = 0;
     let transferenciaTotal = 0;
     let transferenciaCount = 0;
+    let mercadopagoTotal = 0;
+    let mercadopagoCount = 0;
     const perTimeSlot = {};
     const productMap = {};
     const perDay = {};
@@ -130,13 +153,16 @@ export const ReportsContent = () => {
       totalShipping += shipping;
       grandTotal += total;
 
-      const paymentMethod = (order.paymentMethod || '').toLowerCase();
-      if (paymentMethod === 'efectivo') {
+      const method = normalizeMethod(order.paymentMethod);
+      if (method === FORMA_PAGO.EFECTIVO) {
         efectivoTotal += total;
         efectivoCount += 1;
-      } else if (paymentMethod === 'transferencia') {
+      } else if (method === FORMA_PAGO.TRANSFERENCIA) {
         transferenciaTotal += total;
         transferenciaCount += 1;
+      } else if (method === FORMA_PAGO.MERCADOPAGO) {
+        mercadopagoTotal += total;
+        mercadopagoCount += 1;
       }
 
       const slot = order.deliveryTimeSlot || 'sin horario';
@@ -165,6 +191,8 @@ export const ReportsContent = () => {
             efectivoCount: 0,
             transferencia: 0,
             transferenciaCount: 0,
+            mercadopago: 0,
+            mercadopagoCount: 0,
           };
         }
         const d = perDay[dayKey];
@@ -172,8 +200,9 @@ export const ReportsContent = () => {
         d.subtotal += subtotal;
         d.shipping += shipping;
         d.total += total;
-        if (paymentMethod === 'efectivo') { d.efectivo += total; d.efectivoCount += 1; }
-        if (paymentMethod === 'transferencia') { d.transferencia += total; d.transferenciaCount += 1; }
+        if (method === FORMA_PAGO.EFECTIVO) { d.efectivo += total; d.efectivoCount += 1; }
+        if (method === FORMA_PAGO.TRANSFERENCIA) { d.transferencia += total; d.transferenciaCount += 1; }
+        if (method === FORMA_PAGO.MERCADOPAGO) { d.mercadopago += total; d.mercadopagoCount += 1; }
       }
 
       // Caja mensual
@@ -188,6 +217,7 @@ export const ReportsContent = () => {
             total: 0,
             efectivo: 0,
             transferencia: 0,
+            mercadopago: 0,
           };
         }
         const m = perMonth[monthKey];
@@ -195,8 +225,9 @@ export const ReportsContent = () => {
         m.subtotal += subtotal;
         m.shipping += shipping;
         m.total += total;
-        if (paymentMethod === 'efectivo') m.efectivo += total;
-        if (paymentMethod === 'transferencia') m.transferencia += total;
+        if (method === FORMA_PAGO.EFECTIVO) m.efectivo += total;
+        if (method === FORMA_PAGO.TRANSFERENCIA) m.transferencia += total;
+        if (method === FORMA_PAGO.MERCADOPAGO) m.mercadopago += total;
       }
     });
 
@@ -209,6 +240,8 @@ export const ReportsContent = () => {
       efectivoCount,
       transferenciaTotal,
       transferenciaCount,
+      mercadopagoTotal,
+      mercadopagoCount,
       perTimeSlot,
       mostOrderedProducts: Object.entries(productMap)
         .map(([name, d]) => ({ name, count: d.count, revenue: d.revenue }))
@@ -292,7 +325,7 @@ export const ReportsContent = () => {
                 <Calendar className="inline w-3 h-3 mr-1" />
                 Mostrando del <span className="font-black text-foreground">{dateRange.from}</span> al <span className="font-black text-foreground">{dateRange.to}</span>
                 {' · '}
-                {stats.totalOrders} {stats.totalOrders === 1 ? 'pedido finalizado' : 'pedidos finalizados'}
+                {stats.totalOrders} {stats.totalOrders === 1 ? 'pedido cobrado' : 'pedidos cobrados'}
               </p>
             </CardContent>
           </Card>
@@ -304,7 +337,7 @@ export const ReportsContent = () => {
           ) : stats.totalOrders === 0 ? (
             <Card className="bg-card border-border">
               <CardContent className="py-16 text-center">
-                <p className="text-sm font-bold uppercase text-muted-foreground">No hay pedidos finalizados en este período</p>
+                <p className="text-sm font-bold uppercase text-muted-foreground">No hay pedidos cobrados en este período</p>
               </CardContent>
             </Card>
           ) : (
@@ -343,6 +376,22 @@ export const ReportsContent = () => {
                     <p className="text-[10px] font-bold uppercase text-muted-foreground mt-1">{stats.transferenciaCount} pedidos</p>
                   </CardContent>
                 </Card>
+
+                {/* Mercado Pago: aparece sólo si hay pedidos viejos pagados con MP
+                    (la opción está deshabilitada en el checkout actual, pero el
+                    histórico puede tener registros). */}
+                {stats.mercadopagoCount > 0 && (
+                  <Card className="bg-card border-border shadow-sm">
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Mercado Pago</p>
+                        <CreditCard className="h-4 w-4 text-blue-400" />
+                      </div>
+                      <p className="text-2xl font-black tabular-nums">{formatPrice(stats.mercadopagoTotal)}</p>
+                      <p className="text-[10px] font-bold uppercase text-muted-foreground mt-1">{stats.mercadopagoCount} pedidos</p>
+                    </CardContent>
+                  </Card>
+                )}
 
                 <Card className="bg-card border-border shadow-sm">
                   <CardContent className="p-4">
