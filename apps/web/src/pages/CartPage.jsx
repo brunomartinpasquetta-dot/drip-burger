@@ -14,8 +14,12 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Minus, Plus, Trash2, ShoppingBag, Loader2, Check, ShoppingBasket } from 'lucide-react';
+// NOTA: el Radix Select de shadcn (que vivía en @/components/ui/select) se sacó
+// del flow del cliente porque su Portal + overlay rompía la viewport en mobile
+// cuando aparecía el teclado virtual → pantalla negra sin contenido. Usamos
+// <select> HTML nativo: en iOS dispara la ruleta del sistema, en Android el
+// dropdown del SO, y elimina el bug de raíz. El admin sigue usando Radix.
+import { Minus, Plus, Trash2, ShoppingBag, Loader2, Check, ShoppingBasket, ChevronDown } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
@@ -749,24 +753,23 @@ const CartPage = () => {
 
                 <div className="space-y-2 pt-2 border-t border-border/50">
                   <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 block">Horario de Reparto</Label>
-                  <Select
-                    value={formData.horario_reparto}
-                    onValueChange={(value) => setFormData({ ...formData, horario_reparto: value })}
-                  >
-                    <SelectTrigger
+                  <div className="relative">
+                    <select
+                      value={formData.horario_reparto}
+                      onChange={(e) => setFormData({ ...formData, horario_reparto: e.target.value })}
                       className={cn(
-                        "bg-background border-border text-foreground font-bold",
+                        "appearance-none w-full h-10 pl-3 pr-9 rounded-md border bg-background text-foreground font-bold text-sm cursor-pointer",
+                        "border-border focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary",
+                        // Cuando no hay valor, mostramos el placeholder en gris
+                        !formData.horario_reparto && "text-muted-foreground",
                         errors.horario_reparto && "border-destructive bg-destructive/10 focus:ring-destructive"
                       )}
                     >
-                      <SelectValue placeholder="Seleccioná un horario" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-card border-border">
+                      <option value="" disabled>Seleccioná un horario</option>
                       {timeSlots.map((slot) => {
                         const info = getSlotInfo(slot);
                         const full = info?.full === true;
                         const available = info?.available ?? null;
-                        // Insuficiente: hay lugar pero no alcanza para el pedido actual
                         const insufficient =
                           !full &&
                           available !== null &&
@@ -779,37 +782,19 @@ const CartPage = () => {
                           available > 0 &&
                           available <= 3;
                         const disabled = full || insufficient;
+                        let suffix = '';
+                        if (full) suffix = ' · SIN LUGAR';
+                        else if (insufficient) suffix = ` · SOLO QUEDAN ${available} MEDALLONES`;
+                        else if (almostFull) suffix = ` · ÚLTIMOS ${available} MEDALLONES`;
                         return (
-                          <SelectItem
-                            key={slot}
-                            value={slot}
-                            disabled={disabled}
-                            className={cn(
-                              "font-bold focus:bg-primary/20 focus:text-primary",
-                              full && "line-through text-red-500 opacity-50 cursor-not-allowed",
-                              insufficient && "text-red-500 opacity-60 cursor-not-allowed",
-                              almostFull && "text-yellow-500"
-                            )}
-                          >
-                            {slot}
-                            {full && (
-                              <span className="ml-2 text-[10px] font-black uppercase">· Sin lugar</span>
-                            )}
-                            {insufficient && (
-                              <span className="ml-2 text-[10px] font-black uppercase">
-                                · Solo quedan {available} medallones
-                              </span>
-                            )}
-                            {almostFull && (
-                              <span className="ml-2 text-[10px] font-black uppercase">
-                                · Últimos {available} medallones
-                              </span>
-                            )}
-                          </SelectItem>
+                          <option key={slot} value={slot} disabled={disabled}>
+                            {slot}{suffix}
+                          </option>
                         );
                       })}
-                    </SelectContent>
-                  </Select>
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                  </div>
                   {availabilityLoading && (
                     <p className="text-[10px] text-muted-foreground font-medium">Verificando disponibilidad...</p>
                   )}
@@ -817,24 +802,22 @@ const CartPage = () => {
 
                 <div className="space-y-2 pt-2 border-t border-border/50">
                   <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 block">Forma de Pago</Label>
-                  <Select
-                    value={formData.forma_pago}
-                    onValueChange={(value) => setFormData({ ...formData, forma_pago: value })}
-                  >
-                    <SelectTrigger
+                  <div className="relative">
+                    <select
+                      value={formData.forma_pago}
+                      onChange={(e) => setFormData({ ...formData, forma_pago: e.target.value })}
                       className={cn(
-                        "bg-background border-border text-foreground font-bold uppercase",
+                        "appearance-none w-full h-10 pl-3 pr-9 rounded-md border bg-background text-foreground font-bold uppercase text-sm cursor-pointer",
+                        "border-border focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary",
                         errors.forma_pago && "border-destructive bg-destructive/10 focus:ring-destructive"
                       )}
                     >
-                      <SelectValue placeholder="Seleccioná método de pago" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-card border-border">
-                      <SelectItem value={FORMA_PAGO.EFECTIVO} className="font-bold uppercase focus:bg-primary/20 focus:text-primary">Efectivo al recibir</SelectItem>
-                      <SelectItem value={FORMA_PAGO.MERCADOPAGO} className="font-bold uppercase focus:bg-primary/20 focus:text-primary">Pagar online (Mercado Pago)</SelectItem>
-                      <SelectItem value={FORMA_PAGO.TRANSFERENCIA} className="font-bold uppercase focus:bg-primary/20 focus:text-primary">Transferencia bancaria</SelectItem>
-                    </SelectContent>
-                  </Select>
+                      <option value={FORMA_PAGO.EFECTIVO}>Efectivo al recibir</option>
+                      <option value={FORMA_PAGO.MERCADOPAGO}>Pagar online (Mercado Pago)</option>
+                      <option value={FORMA_PAGO.TRANSFERENCIA}>Transferencia bancaria</option>
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                  </div>
                   {formData.forma_pago === FORMA_PAGO.MERCADOPAGO && (
                     <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mt-1">
                       Tarjeta, transferencia o Mercado Pago
