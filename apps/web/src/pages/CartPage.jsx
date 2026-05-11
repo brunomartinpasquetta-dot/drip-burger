@@ -24,7 +24,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import { normalizePhone, isValidPhone, formatPreview, esTelefonoValido } from '@/lib/phoneAr.js';
-import { FORMA_PAGO } from '@/lib/orderConstants.js';
+import { FORMA_PAGO, MERCADOPAGO_UI_ENABLED } from '@/lib/orderConstants.js';
 
 const formatPrice = (price) => {
   return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(price || 0);
@@ -813,7 +813,9 @@ const CartPage = () => {
                       )}
                     >
                       <option value={FORMA_PAGO.EFECTIVO}>Efectivo al recibir</option>
-                      <option value={FORMA_PAGO.MERCADOPAGO}>Pagar online (Mercado Pago)</option>
+                      {MERCADOPAGO_UI_ENABLED && (
+                        <option value={FORMA_PAGO.MERCADOPAGO}>Pagar online (Mercado Pago)</option>
+                      )}
                       <option value={FORMA_PAGO.TRANSFERENCIA}>Transferencia bancaria</option>
                     </select>
                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />

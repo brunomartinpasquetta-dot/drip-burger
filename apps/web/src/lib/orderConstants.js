@@ -58,6 +58,12 @@ export const FORMA_PAGO = {
 
 export const FORMA_PAGO_VALUES = Object.values(FORMA_PAGO);
 
+// Flag de UI para ocultar el método "Pago Online" / MercadoPago del checkout
+// cliente sin tocar la integración. Reversible: cambiar a `true` para volver
+// a ofrecerlo. NO afecta pedidos históricos, ni la rama MP de handleSubmit,
+// ni webhooks, ni return URLs, ni la card admin de MP en /gestion/config.
+export const MERCADOPAGO_UI_ENABLED = false;
+
 // Label largo para el cliente al elegir
 export const FORMA_PAGO_LABELS = {
   Efectivo: 'Efectivo al recibir',
