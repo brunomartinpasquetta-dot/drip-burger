@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Helmet } from 'react-helmet';
 import { Link } from 'react-router-dom';
 import pb from '@/lib/pocketbaseClient';
@@ -7,11 +7,10 @@ import Header from '@/components/Header.jsx';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Skeleton } from '@/components/ui/skeleton';
-import { DollarSign, ShoppingBag, Banknote, CreditCard, Truck, Calendar, ArrowLeft } from 'lucide-react';
+import { ChevronDown, ChevronUp, Calendar, ArrowLeft, ShoppingBag, Wallet, TrendingUp, TrendingDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays, subMonths, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -23,577 +22,570 @@ const formatPrice = (price) =>
 const toISODate = (d) => format(d, 'yyyy-MM-dd');
 const todayISO = () => toISODate(new Date());
 
-// Presets de rango de fechas
+// Presets de rango de fechas — los mismos para ambos tabs.
 const PRESETS = [
-  {
-    key: 'today',
-    label: 'Hoy',
-    range: () => ({ from: toISODate(new Date()), to: toISODate(new Date()) }),
-  },
-  {
-    key: 'yesterday',
-    label: 'Ayer',
-    range: () => { const y = subDays(new Date(), 1); return { from: toISODate(y), to: toISODate(y) }; },
-  },
-  {
-    key: 'week',
-    label: 'Esta semana',
+  { key: 'today', label: 'Hoy',
+    range: () => ({ from: toISODate(new Date()), to: toISODate(new Date()) }) },
+  { key: 'yesterday', label: 'Ayer',
+    range: () => { const y = subDays(new Date(), 1); return { from: toISODate(y), to: toISODate(y) }; } },
+  { key: 'week', label: 'Esta semana',
     range: () => ({
       from: toISODate(startOfWeek(new Date(), { weekStartsOn: 1 })),
       to: toISODate(endOfWeek(new Date(), { weekStartsOn: 1 })),
-    }),
-  },
-  {
-    key: 'month',
-    label: 'Este mes',
-    range: () => ({ from: toISODate(startOfMonth(new Date())), to: toISODate(endOfMonth(new Date())) }),
-  },
-  {
-    key: 'prevMonth',
-    label: 'Mes pasado',
+    }) },
+  { key: 'month', label: 'Este mes',
+    range: () => ({ from: toISODate(startOfMonth(new Date())), to: toISODate(endOfMonth(new Date())) }) },
+  { key: 'prevMonth', label: 'Mes pasado',
     range: () => {
       const prev = subMonths(new Date(), 1);
       return { from: toISODate(startOfMonth(prev)), to: toISODate(endOfMonth(prev)) };
-    },
-  },
-  {
-    key: '30d',
-    label: 'Últimos 30 días',
-    range: () => ({ from: toISODate(subDays(new Date(), 29)), to: toISODate(new Date()) }),
-  },
+    } },
+  { key: '30d', label: 'Últimos 30 días',
+    range: () => ({ from: toISODate(subDays(new Date(), 29)), to: toISODate(new Date()) }) },
 ];
 
+const normalizeMethod = (raw) => {
+  const s = String(raw || '').trim().toLowerCase();
+  if (s === FORMA_PAGO.EFECTIVO.toLowerCase()) return FORMA_PAGO.EFECTIVO;
+  if (s === FORMA_PAGO.TRANSFERENCIA.toLowerCase()) return FORMA_PAGO.TRANSFERENCIA;
+  if (s === FORMA_PAGO.MERCADOPAGO.toLowerCase()) return FORMA_PAGO.MERCADOPAGO;
+  return '';
+};
+
+// ══════════════════════════════════════════════════════════════════
+// Selector de período (presets + custom)
+// ══════════════════════════════════════════════════════════════════
+const PeriodSelector = ({ dateRange, setDateRange, activePreset, setActivePreset, onApply, loading }) => {
+  const [customOpen, setCustomOpen] = useState(false);
+  return (
+    <Card className="bg-card border-border shadow-sm mb-4">
+      <CardContent className="p-3 space-y-3">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground w-16 shrink-0">Período</span>
+          {PRESETS.map(p => (
+            <button
+              key={p.key}
+              onClick={() => { setActivePreset(p.key); const r = p.range(); setDateRange(r); onApply(r); setCustomOpen(false); }}
+              className={`px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-wide border transition-colors ${
+                activePreset === p.key
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'bg-card border-border text-muted-foreground hover:text-foreground hover:border-primary/40'
+              }`}
+            >{p.label}</button>
+          ))}
+          <button
+            onClick={() => { setActivePreset('custom'); setCustomOpen(true); }}
+            className={`px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-wide border transition-colors ${
+              activePreset === 'custom'
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'bg-card border-border text-muted-foreground hover:text-foreground hover:border-primary/40'
+            }`}
+          >Personalizado</button>
+        </div>
+
+        {customOpen && (
+          <form onSubmit={(e) => { e.preventDefault(); onApply(); }} className="flex flex-col sm:flex-row gap-2 items-end pt-1 border-t border-border">
+            <div className="flex-1 w-full">
+              <Label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-1 block">Desde</Label>
+              <Input type="date" value={dateRange.from} onChange={(e) => setDateRange({ ...dateRange, from: e.target.value })} max={todayISO()}
+                className="bg-background border-border text-foreground h-9 text-xs font-bold" />
+            </div>
+            <div className="flex-1 w-full">
+              <Label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-1 block">Hasta</Label>
+              <Input type="date" value={dateRange.to} onChange={(e) => setDateRange({ ...dateRange, to: e.target.value })} max={todayISO()}
+                className="bg-background border-border text-foreground h-9 text-xs font-bold" />
+            </div>
+            <Button type="submit" disabled={loading} className="btn-primary h-9 px-4 text-[11px] font-black uppercase">
+              {loading ? '...' : 'Aplicar'}
+            </Button>
+          </form>
+        )}
+
+        <p className="text-[10px] text-muted-foreground font-medium">
+          <Calendar className="inline w-3 h-3 mr-1" />
+          Del <span className="font-black text-foreground">{dateRange.from}</span> al <span className="font-black text-foreground">{dateRange.to}</span>
+        </p>
+      </CardContent>
+    </Card>
+  );
+};
+
+// ══════════════════════════════════════════════════════════════════
+// TAB 1 — Productos más vendidos
+// ══════════════════════════════════════════════════════════════════
+const ProductosTab = ({ dateRange }) => {
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const fromObj = startOfDay(parseISO(dateRange.from));
+        const toObj = endOfDay(parseISO(dateRange.to));
+        const filter = `paymentStatus='Pagado' && orderStatus != 'Cancelado' && created >= "${fromObj.toISOString()}" && created <= "${toObj.toISOString()}"`;
+        const results = await pb.collection('orders').getFullList({
+          filter, sort: '-created', requestKey: null,
+        });
+        if (!cancelled) setOrders(results);
+      } catch (err) {
+        console.error('[ProductosTab] loadOrders failed:', err);
+        if (!cancelled) {
+          toast.error('Error al cargar productos');
+          setOrders([]);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [dateRange.from, dateRange.to]);
+
+  const productMap = useMemo(() => {
+    const map = {};
+    orders.forEach((order) => {
+      if (!Array.isArray(order.items)) return;
+      order.items.forEach((item) => {
+        const name = (item.productName || 'Sin nombre').toUpperCase();
+        if (!map[name]) map[name] = { count: 0, revenue: 0 };
+        const qty = Number(item.quantity) || 1;
+        map[name].count += qty;
+        map[name].revenue += (Number(item.price) || 0) * qty;
+      });
+    });
+    return map;
+  }, [orders]);
+
+  const ranked = useMemo(() => Object.entries(productMap)
+    .map(([name, d]) => ({ name, count: d.count, revenue: d.revenue }))
+    .sort((a, b) => b.count - a.count), [productMap]);
+
+  const totalUnits = ranked.reduce((s, p) => s + p.count, 0);
+  const totalRevenue = ranked.reduce((s, p) => s + p.revenue, 0);
+
+  if (loading) return <Skeleton className="h-64 w-full rounded-xl" />;
+  if (ranked.length === 0) {
+    return (
+      <Card className="bg-card border-border">
+        <CardContent className="py-16 text-center">
+          <ShoppingBag className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
+          <p className="text-sm font-bold uppercase text-muted-foreground">No hay productos vendidos en este período</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse min-w-[500px]">
+          <thead>
+            <tr className="bg-muted/20 border-b border-border">
+              <th className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground w-10">#</th>
+              <th className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Producto</th>
+              <th className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground text-right">Unidades</th>
+              <th className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-primary text-right">Recaudación</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {ranked.map((p, i) => (
+              <tr key={p.name} className="hover:bg-muted/10 transition-colors">
+                <td className="px-3 py-2 text-xs font-black tabular-nums text-muted-foreground">{i + 1}</td>
+                <td className="px-3 py-2 font-black text-xs uppercase">{p.name}</td>
+                <td className="px-3 py-2 text-sm font-black tabular-nums text-right">{p.count}</td>
+                <td className="px-3 py-2 text-sm font-black tabular-nums text-right text-primary">{formatPrice(p.revenue)}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot className="bg-primary/10 border-t-2 border-primary/30">
+            <tr>
+              <td className="px-3 py-2" />
+              <td className="px-3 py-2 text-[10px] font-black uppercase tracking-widest">Total</td>
+              <td className="px-3 py-2 text-sm font-black tabular-nums text-right">{totalUnits}</td>
+              <td className="px-3 py-2 text-sm font-black tabular-nums text-right text-primary">{formatPrice(totalRevenue)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+// ══════════════════════════════════════════════════════════════════
+// TAB 2 — Cierres de caja (lista + detalle expandible)
+// ══════════════════════════════════════════════════════════════════
+const CierreDetalle = ({ jornada }) => {
+  const [movimientos, setMovimientos] = useState([]);
+  const [pedidos, setPedidos] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const [movs, pds] = await Promise.all([
+          pb.collection('movimientos_caja').getFullList({
+            filter: `jornadaId = "${jornada.id}"`, sort: 'created', requestKey: null,
+          }).catch(() => []),
+          pb.collection('orders').getFullList({
+            filter: `jornadaId = "${jornada.id}"`, sort: '-created', requestKey: null,
+          }).catch(() => []),
+        ]);
+        if (!cancelled) {
+          setMovimientos(movs);
+          setPedidos(pds);
+        }
+      } catch (err) {
+        console.error('[CierreDetalle] failed:', err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [jornada.id]);
+
+  const productos = useMemo(() => {
+    const map = {};
+    pedidos.forEach((o) => {
+      if (o.orderStatus === 'Cancelado') return;
+      if (o.paymentStatus !== 'Pagado') return;
+      (o.items || []).forEach((item) => {
+        const name = (item.productName || 'Sin nombre').toUpperCase();
+        if (!map[name]) map[name] = { count: 0, revenue: 0 };
+        const qty = Number(item.quantity) || 1;
+        map[name].count += qty;
+        map[name].revenue += (Number(item.price) || 0) * qty;
+      });
+    });
+    return Object.entries(map)
+      .map(([name, d]) => ({ name, ...d }))
+      .sort((a, b) => b.count - a.count);
+  }, [pedidos]);
+
+  const pedidosCobrados = pedidos.filter((p) => p.paymentStatus === 'Pagado' && p.orderStatus !== 'Cancelado');
+  const ingresos = movimientos.filter((m) => m.tipo === 'ingreso');
+  const egresos = movimientos.filter((m) => m.tipo === 'egreso');
+
+  if (loading) return <div className="p-4"><Skeleton className="h-32 w-full rounded-md" /></div>;
+
+  return (
+    <div className="border-t border-border bg-background/40 p-4 space-y-4">
+      {/* Resumen rápido del cierre */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <SummaryBox label="Pedidos cobrados" value={pedidosCobrados.length} />
+        <SummaryBox label="Efectivo" value={formatPrice(jornada.totalEfectivo)} colorCls="text-orange-400" />
+        <SummaryBox label="Transferencias" value={formatPrice(jornada.totalTransferencias)} colorCls="text-green-400" />
+        <SummaryBox label="Cuadre" value={formatPrice(jornada.cuadre)}
+          colorCls={Math.abs(Number(jornada.cuadre) || 0) < 1 ? 'text-green-400' : 'text-red-400'} />
+      </div>
+
+      {/* Productos vendidos en esta jornada */}
+      <DetailSection
+        title="Productos vendidos"
+        icon={<ShoppingBag className="w-3.5 h-3.5" />}
+        emptyMsg="Sin productos vendidos"
+        empty={productos.length === 0}
+      >
+        <table className="w-full text-left border-collapse min-w-[420px]">
+          <thead>
+            <tr className="bg-muted/10 border-b border-border">
+              <th className="px-2 py-1 text-[9px] font-black uppercase tracking-widest text-muted-foreground">Producto</th>
+              <th className="px-2 py-1 text-[9px] font-black uppercase tracking-widest text-muted-foreground text-right">Cant.</th>
+              <th className="px-2 py-1 text-[9px] font-black uppercase tracking-widest text-muted-foreground text-right">Recaudación</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {productos.map((p) => (
+              <tr key={p.name}>
+                <td className="px-2 py-1 text-xs font-bold uppercase">{p.name}</td>
+                <td className="px-2 py-1 text-xs font-black tabular-nums text-right">{p.count}</td>
+                <td className="px-2 py-1 text-xs font-black tabular-nums text-right text-primary">{formatPrice(p.revenue)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </DetailSection>
+
+      {/* Movimientos de dinero (ingresos/egresos manuales) */}
+      <DetailSection
+        title={`Movimientos de caja (${movimientos.length})`}
+        icon={<Wallet className="w-3.5 h-3.5" />}
+        emptyMsg="Sin movimientos manuales en esta jornada"
+        empty={movimientos.length === 0}
+      >
+        <table className="w-full text-left border-collapse min-w-[420px]">
+          <thead>
+            <tr className="bg-muted/10 border-b border-border">
+              <th className="px-2 py-1 text-[9px] font-black uppercase tracking-widest text-muted-foreground w-16">Tipo</th>
+              <th className="px-2 py-1 text-[9px] font-black uppercase tracking-widest text-muted-foreground">Motivo</th>
+              <th className="px-2 py-1 text-[9px] font-black uppercase tracking-widest text-muted-foreground text-right">Monto</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {ingresos.map((m) => (
+              <tr key={m.id}>
+                <td className="px-2 py-1 text-[10px] font-black uppercase tracking-wider text-green-400 flex items-center gap-1">
+                  <TrendingUp className="w-3 h-3" />Ingreso
+                </td>
+                <td className="px-2 py-1 text-xs font-medium">{m.motivo}</td>
+                <td className="px-2 py-1 text-xs font-black tabular-nums text-right text-green-400">+{formatPrice(m.monto)}</td>
+              </tr>
+            ))}
+            {egresos.map((m) => (
+              <tr key={m.id}>
+                <td className="px-2 py-1 text-[10px] font-black uppercase tracking-wider text-red-400 flex items-center gap-1">
+                  <TrendingDown className="w-3 h-3" />Egreso
+                </td>
+                <td className="px-2 py-1 text-xs font-medium">{m.motivo}</td>
+                <td className="px-2 py-1 text-xs font-black tabular-nums text-right text-red-400">-{formatPrice(m.monto)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </DetailSection>
+
+      {/* Pedidos asociados (todos los de la jornada, no solo cobrados) */}
+      <DetailSection
+        title={`Pedidos (${pedidos.length})`}
+        icon={<ShoppingBag className="w-3.5 h-3.5" />}
+        emptyMsg="Sin pedidos asociados"
+        empty={pedidos.length === 0}
+      >
+        <table className="w-full text-left border-collapse min-w-[600px]">
+          <thead>
+            <tr className="bg-muted/10 border-b border-border">
+              <th className="px-2 py-1 text-[9px] font-black uppercase tracking-widest text-muted-foreground">#</th>
+              <th className="px-2 py-1 text-[9px] font-black uppercase tracking-widest text-muted-foreground">Cliente</th>
+              <th className="px-2 py-1 text-[9px] font-black uppercase tracking-widest text-muted-foreground">Hora</th>
+              <th className="px-2 py-1 text-[9px] font-black uppercase tracking-widest text-muted-foreground">Estado</th>
+              <th className="px-2 py-1 text-[9px] font-black uppercase tracking-widest text-muted-foreground">Pago</th>
+              <th className="px-2 py-1 text-[9px] font-black uppercase tracking-widest text-muted-foreground text-right">Total</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {pedidos.map((o) => {
+              const cancelled = o.orderStatus === 'Cancelado';
+              const paid = o.paymentStatus === 'Pagado';
+              return (
+                <tr key={o.id} className={cancelled ? 'opacity-50' : ''}>
+                  <td className="px-2 py-1 text-xs font-black tabular-nums">#{o.orderNumber || o.id.slice(0, 6)}</td>
+                  <td className="px-2 py-1 text-xs font-bold uppercase truncate max-w-[140px]">{o.customerName || '-'}</td>
+                  <td className="px-2 py-1 text-xs font-bold tabular-nums text-muted-foreground">{o.deliveryTimeSlot || '-'}</td>
+                  <td className="px-2 py-1 text-[10px] font-black uppercase">{o.orderStatus || '-'}</td>
+                  <td className="px-2 py-1 text-[10px] font-black uppercase">
+                    <span className={paid ? 'text-green-400' : 'text-amber-400'}>{paid ? '✓' : '⏳'} {normalizeMethod(o.paymentMethod) || o.paymentMethod}</span>
+                  </td>
+                  <td className="px-2 py-1 text-xs font-black tabular-nums text-right text-primary">{formatPrice(o.totalAmount)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </DetailSection>
+    </div>
+  );
+};
+
+const SummaryBox = ({ label, value, colorCls = 'text-foreground' }) => (
+  <div className="bg-card border border-border rounded p-2">
+    <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-0.5">{label}</p>
+    <p className={`text-sm font-black tabular-nums ${colorCls}`}>{value}</p>
+  </div>
+);
+
+const DetailSection = ({ title, icon, children, empty, emptyMsg }) => (
+  <div className="bg-card border border-border rounded-md overflow-hidden">
+    <div className="px-3 py-2 border-b border-border bg-muted/5 flex items-center gap-2">
+      <span className="text-primary">{icon}</span>
+      <span className="text-[10px] font-black uppercase tracking-widest">{title}</span>
+    </div>
+    <div className="overflow-x-auto">
+      {empty ? (
+        <p className="px-3 py-4 text-[10px] font-bold uppercase text-muted-foreground text-center">{emptyMsg}</p>
+      ) : children}
+    </div>
+  </div>
+);
+
+const CierresTab = ({ dateRange }) => {
+  const [jornadas, setJornadas] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [expandedId, setExpandedId] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const fromObj = startOfDay(parseISO(dateRange.from));
+        const toObj = endOfDay(parseISO(dateRange.to));
+        const filter = `estado='cerrada' && fecha >= "${fromObj.toISOString()}" && fecha <= "${toObj.toISOString()}"`;
+        const results = await pb.collection('jornadas').getFullList({
+          filter, sort: '-fecha,-horaCierre', requestKey: null,
+        });
+        if (!cancelled) setJornadas(results);
+      } catch (err) {
+        console.error('[CierresTab] failed:', err);
+        if (!cancelled) {
+          toast.error('Error al cargar cierres de caja');
+          setJornadas([]);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [dateRange.from, dateRange.to]);
+
+  if (loading) return <Skeleton className="h-64 w-full rounded-xl" />;
+  if (jornadas.length === 0) {
+    return (
+      <Card className="bg-card border-border">
+        <CardContent className="py-16 text-center">
+          <Wallet className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
+          <p className="text-sm font-bold uppercase text-muted-foreground">No hay cierres de caja en este período</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {jornadas.map((j) => {
+        const isOpen = expandedId === j.id;
+        const fechaTxt = (() => {
+          try { return format(parseISO(j.fecha), "d MMM yyyy", { locale: es }); }
+          catch { return j.fecha; }
+        })();
+        const cuadreOk = Math.abs(Number(j.cuadre) || 0) < 1;
+        const cuadreCls = cuadreOk ? 'text-green-400' : 'text-red-400';
+        const totalFacturado = (Number(j.totalEfectivo) || 0) + (Number(j.totalTransferencias) || 0);
+        return (
+          <div key={j.id} className="bg-card border border-border rounded-lg overflow-hidden shadow-sm">
+            <button
+              type="button"
+              onClick={() => setExpandedId(isOpen ? null : j.id)}
+              className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/10 transition-colors text-left"
+            >
+              <div className="shrink-0 w-8 h-8 rounded bg-primary/10 flex items-center justify-center">
+                {isOpen ? <ChevronUp className="w-4 h-4 text-primary" /> : <ChevronDown className="w-4 h-4 text-primary" />}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-black uppercase tracking-wide truncate">{fechaTxt}</p>
+                <p className="text-[10px] font-bold uppercase text-muted-foreground tabular-nums">
+                  Apertura {j.horaApertura || '—'} · Cierre {j.horaCierre || '—'}
+                </p>
+              </div>
+              <div className="hidden sm:flex items-center gap-4 text-right">
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Pedidos</p>
+                  <p className="text-sm font-black tabular-nums">{j.totalPedidos || 0}</p>
+                </div>
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Facturado</p>
+                  <p className="text-sm font-black tabular-nums text-primary">{formatPrice(totalFacturado)}</p>
+                </div>
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Cuadre</p>
+                  <p className={`text-sm font-black tabular-nums ${cuadreCls}`}>{formatPrice(j.cuadre)}</p>
+                </div>
+              </div>
+            </button>
+            {/* En mobile: chips abajo del header */}
+            <div className="sm:hidden px-4 pb-3 flex gap-2 flex-wrap text-[10px] font-bold tabular-nums">
+              <span className="px-2 py-0.5 rounded bg-background border border-border">{j.totalPedidos || 0} pedidos</span>
+              <span className="px-2 py-0.5 rounded bg-background border border-border text-primary">{formatPrice(totalFacturado)}</span>
+              <span className={`px-2 py-0.5 rounded bg-background border border-border ${cuadreCls}`}>Cuadre {formatPrice(j.cuadre)}</span>
+            </div>
+            {isOpen && <CierreDetalle jornada={j} />}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+// ══════════════════════════════════════════════════════════════════
+// Page wrapper
+// ══════════════════════════════════════════════════════════════════
 // Body de la pantalla de Reportes, sin Header ni container.
 // Se usa embebido como tab dentro del AdminDashboard y también por el
 // wrapper SalesReportingPage (página standalone para deep-links legacy).
+//
+// Estructura: 2 tabs principales con un único selector de período arriba:
+//   - Productos: ranking de productos vendidos en el rango.
+//   - Cierres de caja: lista de jornadas cerradas; cada fila se expande
+//     y muestra detalle (movimientos, pedidos, productos de esa jornada).
+//
+// NOTA: la "caja general" agregada (KPIs totales del período) NO está acá
+// — es feature de la licencia pro. Cada caja se mira individualmente.
 export const ReportsContent = () => {
-  const [orders, setOrders] = useState([]);
-  const [loading, setLoading] = useState(false);
   const [activePreset, setActivePreset] = useState('today');
   const [dateRange, setDateRange] = useState(PRESETS[0].range());
-
-  useEffect(() => {
-    loadOrders();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const applyPreset = (preset) => {
-    setActivePreset(preset.key);
-    const r = preset.range();
-    setDateRange(r);
-    loadOrders(r);
-  };
-
-  const loadOrders = async (rangeOverride) => {
-    const range = rangeOverride || dateRange;
-    setLoading(true);
-    try {
-      const fromObj = startOfDay(parseISO(range.from));
-      const toObj = endOfDay(parseISO(range.to));
-      // Filtramos por paymentStatus='Pagado' (caja real cobrada), no por
-      // orderStatus='Finalizado'. En la práctica los admins rara vez marcan
-      // un pedido como "Finalizado" — lo cobran y lo dejan en "En camino" o
-      // "Listo". Con el filtro viejo reportes quedaba vacío aunque hubiera
-      // entrada de plata. Excluimos Cancelado por si quedó pagado y luego
-      // cancelado (caso raro pero posible).
-      const filterString = `paymentStatus='Pagado' && orderStatus != 'Cancelado' && created >= "${fromObj.toISOString()}" && created <= "${toObj.toISOString()}"`;
-
-      const results = await pb.collection('orders').getFullList({
-        filter: filterString,
-        sort: '-created',
-        requestKey: null,
-      });
-      setOrders(results);
-    } catch (error) {
-      console.error('[loadOrders] failed:', error);
-      toast.error('Error al cargar los pedidos');
-      setOrders([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // ── Cómputos agregados ───────────────────────────────────────────
-  // Notas:
-  //  - Comparamos contra FORMA_PAGO (constantes) en vez de strings sueltos.
-  //  - Mercado Pago se separa de Transferencia bancaria — antes ningún caso
-  //    capturaba MP y se perdía en el limbo (no aparecía en ningún total).
-  //  - El método se normaliza también desde paymentMethod legacy ("efectivo"
-  //    minúscula de pedidos viejos) para que el histórico siga sumando.
-  const normalizeMethod = (raw) => {
-    const s = String(raw || '').trim().toLowerCase();
-    if (s === FORMA_PAGO.EFECTIVO.toLowerCase()) return FORMA_PAGO.EFECTIVO;
-    if (s === FORMA_PAGO.TRANSFERENCIA.toLowerCase()) return FORMA_PAGO.TRANSFERENCIA;
-    if (s === FORMA_PAGO.MERCADOPAGO.toLowerCase()) return FORMA_PAGO.MERCADOPAGO;
-    return '';
-  };
-
-  const stats = (() => {
-    let totalOrders = 0;
-    let totalSubtotal = 0;
-    let totalShipping = 0;
-    let grandTotal = 0;
-    let efectivoTotal = 0;
-    let efectivoCount = 0;
-    let transferenciaTotal = 0;
-    let transferenciaCount = 0;
-    let mercadopagoTotal = 0;
-    let mercadopagoCount = 0;
-    const perTimeSlot = {};
-    const productMap = {};
-    const perDay = {};
-    const perMonth = {};
-
-    orders.forEach((order) => {
-      totalOrders += 1;
-      const shipping = order.precio_envio_snapshot || 0;
-      const total = order.totalAmount || 0;
-      const subtotal = total - shipping;
-      totalSubtotal += subtotal;
-      totalShipping += shipping;
-      grandTotal += total;
-
-      const method = normalizeMethod(order.paymentMethod);
-      if (method === FORMA_PAGO.EFECTIVO) {
-        efectivoTotal += total;
-        efectivoCount += 1;
-      } else if (method === FORMA_PAGO.TRANSFERENCIA) {
-        transferenciaTotal += total;
-        transferenciaCount += 1;
-      } else if (method === FORMA_PAGO.MERCADOPAGO) {
-        mercadopagoTotal += total;
-        mercadopagoCount += 1;
-      }
-
-      const slot = order.deliveryTimeSlot || 'sin horario';
-      perTimeSlot[slot] = (perTimeSlot[slot] || 0) + total;
-
-      if (Array.isArray(order.items)) {
-        order.items.forEach((item) => {
-          const name = item.productName || 'Unknown';
-          if (!productMap[name]) productMap[name] = { count: 0, revenue: 0 };
-          productMap[name].count += item.quantity || 1;
-          productMap[name].revenue += (item.price * item.quantity) || 0;
-        });
-      }
-
-      // Caja diaria
-      const dayKey = (order.created || '').slice(0, 10);
-      if (dayKey) {
-        if (!perDay[dayKey]) {
-          perDay[dayKey] = {
-            date: dayKey,
-            orders: 0,
-            subtotal: 0,
-            shipping: 0,
-            total: 0,
-            efectivo: 0,
-            efectivoCount: 0,
-            transferencia: 0,
-            transferenciaCount: 0,
-            mercadopago: 0,
-            mercadopagoCount: 0,
-          };
-        }
-        const d = perDay[dayKey];
-        d.orders += 1;
-        d.subtotal += subtotal;
-        d.shipping += shipping;
-        d.total += total;
-        if (method === FORMA_PAGO.EFECTIVO) { d.efectivo += total; d.efectivoCount += 1; }
-        if (method === FORMA_PAGO.TRANSFERENCIA) { d.transferencia += total; d.transferenciaCount += 1; }
-        if (method === FORMA_PAGO.MERCADOPAGO) { d.mercadopago += total; d.mercadopagoCount += 1; }
-      }
-
-      // Caja mensual
-      const monthKey = (order.created || '').slice(0, 7);
-      if (monthKey) {
-        if (!perMonth[monthKey]) {
-          perMonth[monthKey] = {
-            month: monthKey,
-            orders: 0,
-            subtotal: 0,
-            shipping: 0,
-            total: 0,
-            efectivo: 0,
-            transferencia: 0,
-            mercadopago: 0,
-          };
-        }
-        const m = perMonth[monthKey];
-        m.orders += 1;
-        m.subtotal += subtotal;
-        m.shipping += shipping;
-        m.total += total;
-        if (method === FORMA_PAGO.EFECTIVO) m.efectivo += total;
-        if (method === FORMA_PAGO.TRANSFERENCIA) m.transferencia += total;
-        if (method === FORMA_PAGO.MERCADOPAGO) m.mercadopago += total;
-      }
-    });
-
-    return {
-      totalOrders,
-      totalSubtotal,
-      totalShipping,
-      grandTotal,
-      efectivoTotal,
-      efectivoCount,
-      transferenciaTotal,
-      transferenciaCount,
-      mercadopagoTotal,
-      mercadopagoCount,
-      perTimeSlot,
-      mostOrderedProducts: Object.entries(productMap)
-        .map(([name, d]) => ({ name, count: d.count, revenue: d.revenue }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 10),
-      perDay: Object.values(perDay).sort((a, b) => b.date.localeCompare(a.date)),
-      perMonth: Object.values(perMonth).sort((a, b) => b.month.localeCompare(a.month)),
-    };
-  })();
-
-  const avgTicket = stats.totalOrders > 0 ? stats.grandTotal / stats.totalOrders : 0;
-  const timeSlotChartData = Object.entries(stats.perTimeSlot).map(([slot, revenue]) => ({ slot, revenue }));
-
-  const handleApplyCustom = (e) => {
-    e.preventDefault();
-    setActivePreset('custom');
-    loadOrders();
+  // Bump del rango aplicado — cambia el key de los tabs para forzar refetch
+  // cuando el usuario aplica un custom range con las mismas fechas.
+  const [appliedKey, setAppliedKey] = useState(0);
+  const onApply = (rangeOverride) => {
+    if (rangeOverride) setDateRange(rangeOverride);
+    setAppliedKey((k) => k + 1);
   };
 
   return (
     <div className="space-y-4">
-      {/* Presets de rango + custom */}
-          <Card className="bg-card border-border shadow-sm mb-4">
-            <CardContent className="p-3 space-y-3">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground w-16 shrink-0">Período</span>
-                {PRESETS.map(p => (
-                  <button
-                    key={p.key}
-                    onClick={() => applyPreset(p)}
-                    className={`px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-wide border transition-colors ${
-                      activePreset === p.key
-                        ? 'bg-primary text-primary-foreground border-primary'
-                        : 'bg-card border-border text-muted-foreground hover:text-foreground hover:border-primary/40'
-                    }`}
-                  >
-                    {p.label}
-                  </button>
-                ))}
-                <button
-                  onClick={() => setActivePreset('custom')}
-                  className={`px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-wide border transition-colors ${
-                    activePreset === 'custom'
-                      ? 'bg-primary text-primary-foreground border-primary'
-                      : 'bg-card border-border text-muted-foreground hover:text-foreground hover:border-primary/40'
-                  }`}
-                >
-                  Personalizado
-                </button>
-              </div>
+      <PeriodSelector
+        dateRange={dateRange}
+        setDateRange={setDateRange}
+        activePreset={activePreset}
+        setActivePreset={setActivePreset}
+        onApply={onApply}
+        loading={false}
+      />
 
-              {activePreset === 'custom' && (
-                <form onSubmit={handleApplyCustom} className="flex flex-col sm:flex-row gap-2 items-end pt-1 border-t border-border">
-                  <div className="flex-1 w-full">
-                    <Label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-1 block">Desde</Label>
-                    <Input
-                      type="date"
-                      value={dateRange.from}
-                      onChange={(e) => setDateRange({ ...dateRange, from: e.target.value })}
-                      max={todayISO()}
-                      className="bg-background border-border text-foreground h-9 text-xs font-bold"
-                    />
-                  </div>
-                  <div className="flex-1 w-full">
-                    <Label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-1 block">Hasta</Label>
-                    <Input
-                      type="date"
-                      value={dateRange.to}
-                      onChange={(e) => setDateRange({ ...dateRange, to: e.target.value })}
-                      max={todayISO()}
-                      className="bg-background border-border text-foreground h-9 text-xs font-bold"
-                    />
-                  </div>
-                  <Button type="submit" disabled={loading} className="btn-primary h-9 px-4 text-[11px] font-black uppercase">
-                    {loading ? '...' : 'Aplicar'}
-                  </Button>
-                </form>
-              )}
+      <Tabs defaultValue="productos" className="space-y-3">
+        <TabsList className="bg-card border border-border p-0.5 h-auto">
+          <TabsTrigger value="productos" className="font-black uppercase tracking-wide py-1.5 px-3 text-[11px] data-[state=active]:bg-primary data-[state=active]:text-primary-foreground flex items-center gap-1.5">
+            <ShoppingBag className="w-3 h-3" />Productos vendidos
+          </TabsTrigger>
+          <TabsTrigger value="cierres" className="font-black uppercase tracking-wide py-1.5 px-3 text-[11px] data-[state=active]:bg-primary data-[state=active]:text-primary-foreground flex items-center gap-1.5">
+            <Wallet className="w-3 h-3" />Cierres de caja
+          </TabsTrigger>
+        </TabsList>
 
-              <p className="text-[10px] text-muted-foreground font-medium">
-                <Calendar className="inline w-3 h-3 mr-1" />
-                Mostrando del <span className="font-black text-foreground">{dateRange.from}</span> al <span className="font-black text-foreground">{dateRange.to}</span>
-                {' · '}
-                {stats.totalOrders} {stats.totalOrders === 1 ? 'pedido cobrado' : 'pedidos cobrados'}
-              </p>
-            </CardContent>
-          </Card>
+        <TabsContent value="productos">
+          <ProductosTab key={`p-${appliedKey}`} dateRange={dateRange} />
+        </TabsContent>
 
-          {loading ? (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-              {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-24 w-full rounded-lg" />)}
-            </div>
-          ) : stats.totalOrders === 0 ? (
-            <Card className="bg-card border-border">
-              <CardContent className="py-16 text-center">
-                <p className="text-sm font-bold uppercase text-muted-foreground">No hay pedidos cobrados en este período</p>
-              </CardContent>
-            </Card>
-          ) : (
-            <>
-              {/* KPIs principales */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-                <Card className="bg-primary text-primary-foreground border-primary shadow-md">
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-[10px] font-black uppercase tracking-widest opacity-80">Caja total</p>
-                      <DollarSign className="h-4 w-4" />
-                    </div>
-                    <p className="text-2xl font-black tabular-nums">{formatPrice(stats.grandTotal)}</p>
-                    <p className="text-[10px] font-bold uppercase opacity-70 mt-1">{stats.totalOrders} pedidos</p>
-                  </CardContent>
-                </Card>
-
-                <Card className="bg-card border-border shadow-sm">
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Efectivo</p>
-                      <Banknote className="h-4 w-4 text-orange-400" />
-                    </div>
-                    <p className="text-2xl font-black tabular-nums">{formatPrice(stats.efectivoTotal)}</p>
-                    <p className="text-[10px] font-bold uppercase text-muted-foreground mt-1">{stats.efectivoCount} pedidos</p>
-                  </CardContent>
-                </Card>
-
-                <Card className="bg-card border-border shadow-sm">
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Transferencia</p>
-                      <CreditCard className="h-4 w-4 text-green-400" />
-                    </div>
-                    <p className="text-2xl font-black tabular-nums">{formatPrice(stats.transferenciaTotal)}</p>
-                    <p className="text-[10px] font-bold uppercase text-muted-foreground mt-1">{stats.transferenciaCount} pedidos</p>
-                  </CardContent>
-                </Card>
-
-                {/* Mercado Pago: aparece sólo si hay pedidos viejos pagados con MP
-                    (la opción está deshabilitada en el checkout actual, pero el
-                    histórico puede tener registros). */}
-                {stats.mercadopagoCount > 0 && (
-                  <Card className="bg-card border-border shadow-sm">
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Mercado Pago</p>
-                        <CreditCard className="h-4 w-4 text-blue-400" />
-                      </div>
-                      <p className="text-2xl font-black tabular-nums">{formatPrice(stats.mercadopagoTotal)}</p>
-                      <p className="text-[10px] font-bold uppercase text-muted-foreground mt-1">{stats.mercadopagoCount} pedidos</p>
-                    </CardContent>
-                  </Card>
-                )}
-
-                <Card className="bg-card border-border shadow-sm">
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Ticket promedio</p>
-                      <ShoppingBag className="h-4 w-4 text-primary" />
-                    </div>
-                    <p className="text-2xl font-black tabular-nums">{formatPrice(avgTicket)}</p>
-                    <p className="text-[10px] font-bold uppercase text-muted-foreground mt-1">Subtotal: {formatPrice(stats.totalSubtotal)}</p>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Caja: pestañas diaria / mensual */}
-              <Tabs defaultValue="diaria" className="space-y-3 mb-4">
-                <TabsList className="bg-card border border-border p-0.5 h-auto">
-                  <TabsTrigger value="diaria" className="font-black uppercase tracking-wide py-1.5 px-3 text-[11px] data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-                    Caja diaria
-                  </TabsTrigger>
-                  <TabsTrigger value="mensual" className="font-black uppercase tracking-wide py-1.5 px-3 text-[11px] data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-                    Caja mensual
-                  </TabsTrigger>
-                </TabsList>
-
-                {/* CAJA DIARIA */}
-                <TabsContent value="diaria">
-                  <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left border-collapse min-w-[700px]">
-                        <thead>
-                          <tr className="bg-muted/20 border-b border-border">
-                            <th className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Fecha</th>
-                            <th className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground text-right">Pedidos</th>
-                            <th className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground text-right">Subtotal</th>
-                            <th className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground text-right">Envíos</th>
-                            <th className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground text-right">Efectivo</th>
-                            <th className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground text-right">Transfer.</th>
-                            <th className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-primary text-right">Total</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-border">
-                          {stats.perDay.map(d => (
-                            <tr key={d.date} className="hover:bg-muted/10 transition-colors">
-                              <td className="px-3 py-2 font-black text-xs uppercase">
-                                {format(parseISO(d.date), "d MMM yyyy", { locale: es })}
-                                <div className="text-[9px] font-bold text-muted-foreground">{format(parseISO(d.date), "EEEE", { locale: es })}</div>
-                              </td>
-                              <td className="px-3 py-2 text-xs font-bold tabular-nums text-right">{d.orders}</td>
-                              <td className="px-3 py-2 text-xs font-bold tabular-nums text-right text-muted-foreground">{formatPrice(d.subtotal)}</td>
-                              <td className="px-3 py-2 text-xs font-bold tabular-nums text-right text-muted-foreground">{formatPrice(d.shipping)}</td>
-                              <td className="px-3 py-2 text-xs font-bold tabular-nums text-right text-orange-400">
-                                {formatPrice(d.efectivo)}
-                                {d.efectivoCount > 0 && <div className="text-[9px] text-muted-foreground">({d.efectivoCount})</div>}
-                              </td>
-                              <td className="px-3 py-2 text-xs font-bold tabular-nums text-right text-green-400">
-                                {formatPrice(d.transferencia)}
-                                {d.transferenciaCount > 0 && <div className="text-[9px] text-muted-foreground">({d.transferenciaCount})</div>}
-                              </td>
-                              <td className="px-3 py-2 text-sm font-black tabular-nums text-right text-primary">{formatPrice(d.total)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                        <tfoot className="bg-primary/10 border-t-2 border-primary/30">
-                          <tr>
-                            <td className="px-3 py-2 text-[10px] font-black uppercase tracking-widest">Total período</td>
-                            <td className="px-3 py-2 text-xs font-black tabular-nums text-right">{stats.totalOrders}</td>
-                            <td className="px-3 py-2 text-xs font-black tabular-nums text-right">{formatPrice(stats.totalSubtotal)}</td>
-                            <td className="px-3 py-2 text-xs font-black tabular-nums text-right">{formatPrice(stats.totalShipping)}</td>
-                            <td className="px-3 py-2 text-xs font-black tabular-nums text-right text-orange-400">{formatPrice(stats.efectivoTotal)}</td>
-                            <td className="px-3 py-2 text-xs font-black tabular-nums text-right text-green-400">{formatPrice(stats.transferenciaTotal)}</td>
-                            <td className="px-3 py-2 text-sm font-black tabular-nums text-right text-primary">{formatPrice(stats.grandTotal)}</td>
-                          </tr>
-                        </tfoot>
-                      </table>
-                    </div>
-                  </div>
-                </TabsContent>
-
-                {/* CAJA MENSUAL */}
-                <TabsContent value="mensual">
-                  <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left border-collapse min-w-[700px]">
-                        <thead>
-                          <tr className="bg-muted/20 border-b border-border">
-                            <th className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Mes</th>
-                            <th className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground text-right">Pedidos</th>
-                            <th className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground text-right">Subtotal</th>
-                            <th className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground text-right">Envíos</th>
-                            <th className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground text-right">Efectivo</th>
-                            <th className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground text-right">Transfer.</th>
-                            <th className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-primary text-right">Total</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-border">
-                          {stats.perMonth.map(m => (
-                            <tr key={m.month} className="hover:bg-muted/10 transition-colors">
-                              <td className="px-3 py-2 font-black text-xs uppercase">
-                                {format(parseISO(`${m.month}-01`), "MMMM yyyy", { locale: es })}
-                              </td>
-                              <td className="px-3 py-2 text-xs font-bold tabular-nums text-right">{m.orders}</td>
-                              <td className="px-3 py-2 text-xs font-bold tabular-nums text-right text-muted-foreground">{formatPrice(m.subtotal)}</td>
-                              <td className="px-3 py-2 text-xs font-bold tabular-nums text-right text-muted-foreground">{formatPrice(m.shipping)}</td>
-                              <td className="px-3 py-2 text-xs font-bold tabular-nums text-right text-orange-400">{formatPrice(m.efectivo)}</td>
-                              <td className="px-3 py-2 text-xs font-bold tabular-nums text-right text-green-400">{formatPrice(m.transferencia)}</td>
-                              <td className="px-3 py-2 text-sm font-black tabular-nums text-right text-primary">{formatPrice(m.total)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </TabsContent>
-              </Tabs>
-
-              {/* Charts */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                <Card className="bg-card border-border shadow-sm">
-                  <CardHeader className="py-3 px-4 border-b border-border bg-muted/5">
-                    <CardTitle className="text-sm font-black uppercase tracking-wide">Top productos</CardTitle>
-                  </CardHeader>
-                  <CardContent className="pt-3 pb-3">
-                    {stats.mostOrderedProducts.length > 0 ? (
-                      <ResponsiveContainer width="100%" height={200}>
-                        <BarChart data={stats.mostOrderedProducts}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                          <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} />
-                          <YAxis stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} />
-                          <Tooltip
-                            contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', borderRadius: '6px' }}
-                            itemStyle={{ color: 'hsl(var(--foreground))', fontWeight: 'bold', fontSize: '12px' }}
-                          />
-                          <Bar dataKey="count" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    ) : (
-                      <div className="h-[200px] flex items-center justify-center">
-                        <p className="text-muted-foreground font-bold uppercase text-xs">Sin datos</p>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-
-                <Card className="bg-card border-border shadow-sm">
-                  <CardHeader className="py-3 px-4 border-b border-border bg-muted/5">
-                    <CardTitle className="text-sm font-black uppercase tracking-wide">Ventas por horario</CardTitle>
-                  </CardHeader>
-                  <CardContent className="pt-3 pb-3">
-                    {timeSlotChartData.length > 0 ? (
-                      <ResponsiveContainer width="100%" height={200}>
-                        <BarChart data={timeSlotChartData}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                          <XAxis dataKey="slot" stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} />
-                          <YAxis stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} />
-                          <Tooltip
-                            contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', borderRadius: '6px' }}
-                            itemStyle={{ color: 'hsl(var(--foreground))', fontWeight: 'bold', fontSize: '12px' }}
-                            formatter={(value) => formatPrice(value)}
-                          />
-                          <Bar dataKey="revenue" fill="hsl(var(--secondary))" radius={[4, 4, 0, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    ) : (
-                      <div className="h-[200px] flex items-center justify-center">
-                        <p className="text-muted-foreground font-bold uppercase text-xs">Sin datos</p>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
-            </>
-          )}
+        <TabsContent value="cierres">
+          <CierresTab key={`c-${appliedKey}`} dateRange={dateRange} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };
 
 // Wrapper standalone para la ruta /gestion/reportes (deep-links viejos).
-// Internamente renderiza ReportsContent dentro del layout público con Header.
-const SalesReportingPage = () => {
-  return (
-    <>
-      <Helmet><title>Reportes - DRIP BURGER</title></Helmet>
-
-      <div className="min-h-screen bg-background">
-        <Header />
-
-        <div className="container mx-auto px-3 sm:px-4 lg:px-6 py-4">
-          <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-            <Button asChild variant="outline" size="sm" className="border-border h-8 px-2 text-[11px]">
-              <Link to="/gestion"><ArrowLeft className="mr-1 h-3 w-3" />Volver</Link>
-            </Button>
-            <h1 className="text-xl sm:text-2xl font-black uppercase tracking-tighter">
-              Reportes <span className="text-primary">DRIP</span>
-            </h1>
-            <div className="w-16" />
-          </div>
-
-          <ReportsContent />
+const SalesReportingPage = () => (
+  <>
+    <Helmet><title>Reportes - DRIP BURGER</title></Helmet>
+    <div className="min-h-screen bg-background">
+      <Header />
+      <div className="container mx-auto px-3 sm:px-4 lg:px-6 py-4">
+        <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+          <Button asChild variant="outline" size="sm" className="border-border h-8 px-2 text-[11px]">
+            <Link to="/gestion"><ArrowLeft className="mr-1 h-3 w-3" />Volver</Link>
+          </Button>
+          <h1 className="text-xl sm:text-2xl font-black uppercase tracking-tighter">
+            Reportes <span className="text-primary">DRIP</span>
+          </h1>
+          <div className="w-16" />
         </div>
+        <ReportsContent />
       </div>
-    </>
-  );
-};
+    </div>
+  </>
+);
 
 export default SalesReportingPage;
+

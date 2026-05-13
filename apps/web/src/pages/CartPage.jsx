@@ -162,6 +162,33 @@ const CartPage = () => {
 
   const timeSlots = ['20:30', '21:00', '21:30', '22:00', '22:30', '23:00'];
 
+  // Cierre anticipado: un slot deja de estar disponible para nuevos pedidos
+  // 6 min antes de su horario (ej: 20:30 cierra a las 20:24). Reduce el riesgo
+  // de pedidos last-second que la cocina no llega a preparar.
+  const SLOT_CUTOFF_MINUTES = 6;
+
+  // Tick para forzar re-render cada 30s y refrescar los chequeos de "cerrado".
+  // Sin esto, si el cliente abre la pantalla 5 min antes del slot, no vería
+  // el cambio cuando entra el corte hasta que toque algo.
+  const [slotTick, setSlotTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setSlotTick((t) => t + 1), 30000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Devuelve true si ya pasamos el horario - 6 min. Comparación contra hora
+  // local del navegador del cliente (todo el flow opera en AR, navegador en
+  // AR — no necesitamos timezone-aware aquí).
+  const isSlotClosed = (slot) => {
+    if (!slot || !/^\d{1,2}:\d{2}$/.test(slot)) return false;
+    const [h, m] = slot.split(':').map((n) => parseInt(n, 10));
+    const slotDate = new Date();
+    slotDate.setHours(h, m, 0, 0);
+    const cutoffMs = slotDate.getTime() - SLOT_CUTOFF_MINUTES * 60 * 1000;
+    return Date.now() >= cutoffMs;
+    // eslint-disable-next-line react-hooks/exhaustive-deps — slotTick fuerza recompute
+  };
+
   // Suma medallones del carrito actual. Productos sin medallones no cuentan.
   const cartMedallions = cartItems.reduce((sum, item) => {
     if (item.hasMedallions === false) return sum;
@@ -223,9 +250,16 @@ const CartPage = () => {
   // Lookup helper: info de disponibilidad para un slot dado
   const getSlotInfo = (slot) => slotAvailability.find((s) => s.slot === slot);
 
-  // Auto-deseleccionar si el slot pasó a inválido (full o sin medallones suficientes)
+  // Auto-deseleccionar si el slot pasó a inválido (cerrado, full, o sin
+  // medallones suficientes). Corre cuando cambia availability, cartMedallions
+  // o el slotTick (cada 30s, para capturar el cutoff de 6 min sin clicks).
   useEffect(() => {
     if (!formData.horario_reparto || availabilityLoading) return;
+    if (isSlotClosed(formData.horario_reparto)) {
+      toast.error('Ese horario ya cerró (cierra 6 minutos antes), elegí otro');
+      setFormData(prev => ({ ...prev, horario_reparto: '' }));
+      return;
+    }
     const info = getSlotInfo(formData.horario_reparto);
     if (!info) return;
     const invalid = info.full || (cartMedallions > 0 && info.available < cartMedallions);
@@ -234,7 +268,7 @@ const CartPage = () => {
       setFormData(prev => ({ ...prev, horario_reparto: '' }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slotAvailability, cartMedallions]);
+  }, [slotAvailability, cartMedallions, slotTick]);
 
   // Pre-cómputo del teléfono: limpieza + validación anti-trolleo + preview
   const phoneCheck = esTelefonoValido(formData.telefono);
@@ -281,6 +315,12 @@ const CartPage = () => {
       return;
     }
 
+    // Pre-flight: slot no debe estar cerrado por cutoff de 6 min
+    if (isSlotClosed(formData.horario_reparto)) {
+      toast.error('Ese horario ya cerró (cierra 6 minutos antes), elegí otro');
+      setFormData(prev => ({ ...prev, horario_reparto: '' }));
+      return;
+    }
     // Pre-flight: validar que el slot tenga medallones suficientes
     const slotInfo = getSlotInfo(formData.horario_reparto);
     if (slotInfo) {
@@ -767,23 +807,30 @@ const CartPage = () => {
                     >
                       <option value="" disabled>Seleccioná un horario</option>
                       {timeSlots.map((slot) => {
+                        // slotTick fuerza el recompute cuando pasa el cutoff
+                        // de los 6 min sin que el cliente toque nada.
+                        void slotTick;
+                        const closed = isSlotClosed(slot);
                         const info = getSlotInfo(slot);
                         const full = info?.full === true;
                         const available = info?.available ?? null;
                         const insufficient =
+                          !closed &&
                           !full &&
                           available !== null &&
                           cartMedallions > 0 &&
                           available < cartMedallions;
                         const almostFull =
+                          !closed &&
                           !full &&
                           !insufficient &&
                           available !== null &&
                           available > 0 &&
                           available <= 3;
-                        const disabled = full || insufficient;
+                        const disabled = closed || full || insufficient;
                         let suffix = '';
-                        if (full) suffix = ' · SIN LUGAR';
+                        if (closed) suffix = ' · CERRADO';
+                        else if (full) suffix = ' · SIN LUGAR';
                         else if (insufficient) suffix = ` · SOLO QUEDAN ${available} MEDALLONES`;
                         else if (almostFull) suffix = ` · ÚLTIMOS ${available} MEDALLONES`;
                         return (
