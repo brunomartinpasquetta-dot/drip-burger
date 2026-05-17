@@ -124,10 +124,36 @@ const ProductosTab = ({ dateRange }) => {
       try {
         const fromObj = startOfDay(parseISO(dateRange.from));
         const toObj = endOfDay(parseISO(dateRange.to));
-        const filter = `paymentStatus='Pagado' && orderStatus != 'Cancelado' && created >= "${fromObj.toISOString()}" && created <= "${toObj.toISOString()}"`;
-        const results = await pb.collection('orders').getFullList({
-          filter, sort: '-created', requestKey: null,
+        // Paso 1: detectar jornadas con actividad en el rango via pedidos
+        // pagados creados dentro de él. Mismo approach que CierresTab.
+        const seedFilter = `paymentStatus='Pagado' && orderStatus != 'Cancelado' && created >= "${fromObj.toISOString()}" && created <= "${toObj.toISOString()}"`;
+        const seedOrders = await pb.collection('orders').getFullList({
+          filter: seedFilter, requestKey: null, fields: 'jornadaId',
         });
+        const jornadaIds = [...new Set(seedOrders.map((o) => o.jornadaId).filter(Boolean))];
+
+        // Paso 2: cargar TODOS los pedidos cobrados de esas jornadas
+        // (ignorando `created` — el criterio es pertenencia a la jornada,
+        // igual que el detalle del cierre). Esto unifica las cifras de
+        // este tab con las del tab Cierres: ambos leen exactamente los
+        // mismos pedidos. Antes el filtro por `created` dejaba afuera
+        // pedidos hechos antes de medianoche pero cobrados durante una
+        // jornada que arrancó después — ese era el bug de "productos
+        // vendidos no coincide con cierre".
+        let results;
+        if (jornadaIds.length === 0) {
+          // No hay jornadas en el rango → caen solo los pedidos
+          // huérfanos sin jornadaId (cobros sin caja abierta).
+          results = await pb.collection('orders').getFullList({
+            filter: seedFilter, sort: '-created', requestKey: null,
+          });
+        } else {
+          const idFilter = jornadaIds.map((id) => `jornadaId="${id}"`).join(' || ');
+          const fullFilter = `(${idFilter}) && paymentStatus='Pagado' && orderStatus != 'Cancelado'`;
+          results = await pb.collection('orders').getFullList({
+            filter: fullFilter, sort: '-created', requestKey: null,
+          });
+        }
         if (!cancelled) setOrders(results);
       } catch (err) {
         console.error('[ProductosTab] loadOrders failed:', err);
