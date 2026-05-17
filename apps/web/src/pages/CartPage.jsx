@@ -133,6 +133,7 @@ const CartPage = () => {
     apellido: '',
     telefono: '',
     direccion: '',
+    observacion: '',
     takeAway: false,
     horario_reparto: '',
     // forma_pago se manda directo a PB. Valores válidos del SelectField
@@ -387,7 +388,10 @@ const CartPage = () => {
         forma_pago: formData.forma_pago,
         paymentMethod: formData.forma_pago,
         paymentStatus: 'Pendiente',
-        orderStatus: 'Pendiente'
+        orderStatus: 'Pendiente',
+        // Observación del cliente — max 50 chars. PB también enforce el max
+        // pero hacemos el slice acá por defensa (input tiene maxLength igual).
+        observacion: (formData.observacion || '').trim().slice(0, 50),
       };
 
       // takeAway: sólo agregamos si es true. Evita rechazo de PB si la
@@ -790,6 +794,27 @@ const CartPage = () => {
                     )}
                   </div>
                 )}
+
+                {/* Observación del cliente — max 50 chars. Se imprime en
+                    comanda de cocina y en ticket de delivery; el admin
+                    también la ve como badge en la card del pedido. */}
+                <div className="space-y-1">
+                  <Label htmlFor="observacion" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    Observación <span className="text-muted-foreground/60 normal-case font-normal">(opcional)</span>
+                  </Label>
+                  <Input
+                    id="observacion"
+                    type="text"
+                    maxLength={50}
+                    value={formData.observacion}
+                    onChange={(e) => setFormData({ ...formData, observacion: e.target.value })}
+                    placeholder="Ej: Sin cebolla, casa puerta roja, dejar en portería..."
+                    className="bg-background border-border text-foreground"
+                  />
+                  <p className="text-[10px] text-muted-foreground text-right tabular-nums">
+                    {(formData.observacion || '').length}/50
+                  </p>
+                </div>
 
                 <div className="space-y-2 pt-2 border-t border-border/50">
                   <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 block">Horario de Reparto</Label>

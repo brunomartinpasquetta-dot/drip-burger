@@ -22,7 +22,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Plus, Pencil, Trash2, Send, ChefHat, CheckCircle2, Banknote, MapPin, Phone, Clock, ArrowLeft, XCircle, Wallet, DollarSign, Loader2, Minus, TrendingUp, TrendingDown, BarChart3, Settings, Utensils, Printer, GripVertical, ChevronUp, ChevronDown } from 'lucide-react';
+import { Plus, Pencil, Trash2, Send, ChefHat, CheckCircle2, Banknote, MapPin, Phone, Clock, ArrowLeft, XCircle, Wallet, DollarSign, Loader2, Minus, TrendingUp, TrendingDown, BarChart3, Settings, Utensils, Printer, GripVertical, ChevronUp, ChevronDown, MessageSquare, Undo2 } from 'lucide-react';
 import { SettingsContent } from './SettingsPage.jsx';
 import { ReportsContent } from './SalesReportingPage.jsx';
 import MenuPreviewContent from './admin/MenuPreviewContent.jsx';
@@ -380,6 +380,18 @@ const KitchenView = ({ orders, onSendToKitchen, onMarkReady, isPending, comandaW
                         <span className="font-bold uppercase tracking-tight text-yellow-400">🍟 Papas</span>
                       </div>
                     )}
+                    {/* Observación del cliente — inline en cocina para que el
+                        cocinero la vea sin click. Es de máxima prioridad
+                        visual. */}
+                    {order.observacion && (
+                      <div className="mt-2 p-2 rounded bg-amber-500/15 border border-amber-500/40 text-amber-400 flex items-start gap-1.5">
+                        <MessageSquare className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                        <div className="text-xs">
+                          <p className="font-black uppercase tracking-widest text-[10px] mb-0.5">Observación</p>
+                          <p className="leading-snug">{order.observacion}</p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -493,6 +505,12 @@ const KitchenView = ({ orders, onSendToKitchen, onMarkReady, isPending, comandaW
                       <div className="flex items-baseline gap-1.5 text-sm leading-tight">
                         <span className="text-base font-black text-yellow-400 tabular-nums w-6 shrink-0">{papasCount}×</span>
                         <span className="font-bold uppercase tracking-tight text-yellow-400">🍟 Papas</span>
+                      </div>
+                    )}
+                    {order.observacion && (
+                      <div className="mt-1.5 p-1.5 rounded bg-amber-500/15 border border-amber-500/40 text-amber-400 flex items-start gap-1.5">
+                        <MessageSquare className="w-3 h-3 shrink-0 mt-0.5" />
+                        <p className="text-[11px] leading-snug font-bold">{order.observacion}</p>
                       </div>
                     )}
                   </div>
@@ -1240,6 +1258,8 @@ const AdminDashboard = () => {
   // sin tener que esperar al polling de 30s.
   const [cajaRefreshKey, setCajaRefreshKey] = useState(0);
   const [lastUpdated, setLastUpdated] = useState(null);
+  // Modal de observación del cliente — { texto, cliente, orderNumber } | null
+  const [observacionOpen, setObservacionOpen] = useState(null);
   const [alarmMuted, setAlarmMuted] = useState(() =>
     typeof window !== 'undefined' && localStorage.getItem('drip_alarm_muted') === '1'
   );
@@ -1622,6 +1642,30 @@ const AdminDashboard = () => {
     } catch (error) {
       console.error('[handleMarkReady] failed:', { orderId, status: error?.status, data: error?.response?.data });
       toast.error(`Error al marcar como listo (${error?.status || 'sin status'})`);
+    } finally {
+      markPending(orderId, false);
+    }
+  };
+
+  // Volver un pedido de "Listo" a "En preparación" — para corregir cuando
+  // se marcó listo por error y la cocina necesita retomarlo. Confirmación
+  // explícita porque revierte un estado terminal de cocina.
+  const handleReturnToKitchen = async (orderId) => {
+    if (!requireAuth()) return;
+    if (!requireJornada()) return;
+    if (!window.confirm('¿Devolver este pedido a cocina? Va a volver al estado "En preparación".')) return;
+    markPending(orderId, true);
+    try {
+      const updated = await pb.collection('orders').update(
+        orderId,
+        { orderStatus: ORDER_STATUS.COOKING },
+        { requestKey: null }
+      );
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...updated } : o));
+      toast.success('Pedido devuelto a cocina');
+    } catch (error) {
+      console.error('[handleReturnToKitchen] failed:', { orderId, status: error?.status, data: error?.response?.data });
+      toast.error(`Error al devolver a cocina (${error?.status || 'sin status'})`);
     } finally {
       markPending(orderId, false);
     }
@@ -2083,6 +2127,18 @@ const AdminDashboard = () => {
                               <span className="truncate">{order.customerAddress || '—'}</span>
                             </span>
                           )}
+                          {/* Badge observación — click abre modal con el texto completo */}
+                          {order.observacion && (
+                            <button
+                              type="button"
+                              onClick={() => setObservacionOpen({ texto: order.observacion, cliente: order.customerName, orderNumber: order.orderNumber })}
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30 text-[10px] font-black uppercase tracking-wider hover:bg-amber-500/25 transition-colors"
+                              title="Ver observación del cliente"
+                            >
+                              <MessageSquare className="w-2.5 h-2.5 shrink-0" />
+                              Observación
+                            </button>
+                          )}
                         </div>
 
                         {/* Row 3: items (contenido del pedido) */}
@@ -2173,6 +2229,19 @@ const AdminDashboard = () => {
                           {/* LISTO → Imprimir ticket + ENVIAR (cambia a SHIPPED + manda WhatsApp) */}
                           {order.orderStatus === ORDER_STATUS.READY && (
                             <>
+                              {/* Volver a cocina — para corregir cuando se
+                                  marcó Listo por error y la cocina necesita
+                                  retomarlo. Icono Undo2 + tooltip claro. */}
+                              <Button
+                                onClick={() => handleReturnToKitchen(order.id)}
+                                disabled={isProcessing}
+                                title="Devolver a cocina (volver a En preparación)"
+                                size="sm"
+                                variant="outline"
+                                className="h-10 px-2 border-amber-500/50 text-amber-400 hover:bg-amber-500/10 hover:text-amber-300 text-[10px] font-black uppercase tracking-wide"
+                              >
+                                <Undo2 className="h-3 w-3" />
+                              </Button>
                               <Button
                                 onClick={() => handlePrintTicket(order)}
                                 type="button"
@@ -2557,6 +2626,31 @@ const AdminDashboard = () => {
               <SettingsContent />
             </TabsContent>
           </Tabs>
+
+          {/* Modal: observación del cliente — abre desde el badge en cards
+              del tab Pedidos. La obs ya se ve inline en cocina, así que el
+              modal solo se usa cuando se accede desde Pedidos. */}
+          <Dialog open={!!observacionOpen} onOpenChange={(o) => !o && setObservacionOpen(null)}>
+            <DialogContent className="bg-card border-border max-w-md">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 text-base">
+                  <MessageSquare className="w-4 h-4 text-amber-400" />
+                  Observación del cliente
+                </DialogTitle>
+                <DialogDescription className="text-muted-foreground text-[11px]">
+                  {observacionOpen?.cliente}{observacionOpen?.orderNumber ? ` · #${observacionOpen.orderNumber}` : ''}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4">
+                <p className="text-sm font-medium leading-relaxed">{observacionOpen?.texto || ''}</p>
+              </div>
+              <DialogFooter>
+                <Button onClick={() => setObservacionOpen(null)} variant="outline" className="border-border">
+                  Cerrar
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
     </>

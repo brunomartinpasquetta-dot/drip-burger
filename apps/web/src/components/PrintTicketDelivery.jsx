@@ -104,6 +104,15 @@ const PrintTicketDelivery = ({ order }) => {
         );
       })}
 
+      {/* Observación del cliente — full text, BOLD, antes del subtotal.
+          Puede contener info de envío (puerta, timbre, depto) o pedido. */}
+      {order.observacion && (
+        <>
+          <div className="ticket-sep">{SEP_DASH}</div>
+          <div className="ticket-bold">OBS: {String(order.observacion).slice(0, 50)}</div>
+        </>
+      )}
+
       <div className="ticket-sep">{SEP_DASH}</div>
       <div className="ticket-row">
         <span>Subtotal:</span>

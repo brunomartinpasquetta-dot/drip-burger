@@ -99,6 +99,13 @@ const renderOrderItems = (order) => {
           &nbsp;&nbsp;+ {papasDelPedido} papas fritas
         </div>
       )}
+      {/* Observación del cliente — destacada y full width para que la
+          cocina la vea sin dudas (sin cebolla, sin pepinillo, etc). */}
+      {order.observacion && (
+        <div className="ticket-bold" style={{ marginTop: '1mm' }}>
+          &nbsp;&nbsp;★ OBS: {String(order.observacion).slice(0, 50)}
+        </div>
+      )}
     </>
   );
 };
