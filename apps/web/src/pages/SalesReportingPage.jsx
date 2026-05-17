@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ChevronDown, ChevronUp, Calendar, ArrowLeft, ShoppingBag, Wallet, TrendingUp, TrendingDown } from 'lucide-react';
+import { ChevronDown, ChevronUp, Calendar, ArrowLeft, ShoppingBag, Wallet, TrendingUp, TrendingDown, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays, subMonths, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -162,7 +162,13 @@ const ProductosTab = ({ dateRange }) => {
     .sort((a, b) => b.count - a.count), [productMap]);
 
   const totalUnits = ranked.reduce((s, p) => s + p.count, 0);
+  // Recaudación de items (sin envío) — lo que cobra el producto en sí.
   const totalRevenue = ranked.reduce((s, p) => s + p.revenue, 0);
+  // Total cobrado (CON envío) — debe coincidir con la suma del cierre de
+  // caja y con totalAmount de las cards de cada pedido. Es lo que entró
+  // realmente al negocio.
+  const totalCobrado = orders.reduce((s, o) => s + (Number(o.totalAmount) || 0), 0);
+  const totalEnvios = totalCobrado - totalRevenue;
 
   if (loading) return <Skeleton className="h-64 w-full rounded-xl" />;
   if (ranked.length === 0) {
@@ -177,6 +183,25 @@ const ProductosTab = ({ dateRange }) => {
   }
 
   return (
+    <div className="space-y-3">
+      {/* Resumen explícito — 3 números para evitar que se confundan con el
+          cierre de caja. La "recaudación" del ranking de productos no incluye
+          envío; el cierre de caja sí. Mostramos ambos. */}
+      <div className="grid grid-cols-3 gap-2">
+        <div className="bg-card border border-border rounded-lg p-3">
+          <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-0.5">Productos vendidos</p>
+          <p className="text-base font-black tabular-nums">{formatPrice(totalRevenue)}</p>
+        </div>
+        <div className="bg-card border border-border rounded-lg p-3">
+          <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-0.5">Envíos</p>
+          <p className="text-base font-black tabular-nums">{formatPrice(totalEnvios)}</p>
+        </div>
+        <div className="bg-primary text-primary-foreground border border-primary rounded-lg p-3">
+          <p className="text-[9px] font-black uppercase tracking-widest opacity-80 mb-0.5">Total cobrado</p>
+          <p className="text-base font-black tabular-nums">{formatPrice(totalCobrado)}</p>
+        </div>
+      </div>
+
     <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
       <div className="overflow-x-auto">
         <table className="w-full text-left border-collapse min-w-[500px]">
@@ -208,6 +233,7 @@ const ProductosTab = ({ dateRange }) => {
           </tfoot>
         </table>
       </div>
+    </div>
     </div>
   );
 };
@@ -268,17 +294,51 @@ const CierreDetalle = ({ jornada }) => {
   const ingresos = movimientos.filter((m) => m.tipo === 'ingreso');
   const egresos = movimientos.filter((m) => m.tipo === 'egreso');
 
+  // Cálculos en VIVO desde los pedidos (no de los campos congelados de
+  // jornada). Cubre el caso "jornada abierta" donde totalEfectivo/cuadre/etc
+  // están vacíos hasta el cierre. Y si está cerrada, debe coincidir con
+  // jornada.totalEfectivo — si no coincide es porque hubo movimientos
+  // post-cierre o porque el cierre se calculó mal.
+  const liveCobrosEfectivo = pedidosCobrados
+    .filter((o) => normalizeMethod(o.paymentMethod) === FORMA_PAGO.EFECTIVO)
+    .reduce((s, o) => s + (Number(o.totalAmount) || 0), 0);
+  const liveCobrosTransferencia = pedidosCobrados
+    .filter((o) => normalizeMethod(o.paymentMethod) === FORMA_PAGO.TRANSFERENCIA)
+    .reduce((s, o) => s + (Number(o.totalAmount) || 0), 0);
+  const liveCobrosMP = pedidosCobrados
+    .filter((o) => normalizeMethod(o.paymentMethod) === FORMA_PAGO.MERCADOPAGO)
+    .reduce((s, o) => s + (Number(o.totalAmount) || 0), 0);
+  const liveTotalCobrado = liveCobrosEfectivo + liveCobrosTransferencia + liveCobrosMP;
+
+  const isAbiertaActiva = jornada.estado === 'abierta';
+
   if (loading) return <div className="p-4"><Skeleton className="h-32 w-full rounded-md" /></div>;
 
   return (
     <div className="border-t border-border bg-background/40 p-4 space-y-4">
-      {/* Resumen rápido del cierre */}
+      {/* Resumen rápido — usa cifras EN VIVO desde los pedidos cargados.
+          Si la jornada está abierta, los campos congelados (jornada.cuadre,
+          jornada.totalEfectivo, etc.) están vacíos; los reemplazamos con
+          cálculos en vivo desde paymentMethod + totalAmount de cada pedido
+          cobrado. Si está cerrada, debería coincidir con los campos
+          congelados (sino el cierre se calculó mal en su momento). */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         <SummaryBox label="Pedidos cobrados" value={pedidosCobrados.length} />
-        <SummaryBox label="Efectivo" value={formatPrice(jornada.totalEfectivo)} colorCls="text-orange-400" />
-        <SummaryBox label="Transferencias" value={formatPrice(jornada.totalTransferencias)} colorCls="text-green-400" />
-        <SummaryBox label="Cuadre" value={formatPrice(jornada.cuadre)}
-          colorCls={Math.abs(Number(jornada.cuadre) || 0) < 1 ? 'text-green-400' : 'text-red-400'} />
+        <SummaryBox label="Efectivo" value={formatPrice(liveCobrosEfectivo)} colorCls="text-orange-400" />
+        <SummaryBox
+          label={liveCobrosMP > 0 ? 'Transf. + MP' : 'Transferencias'}
+          value={formatPrice(liveCobrosTransferencia + liveCobrosMP)}
+          colorCls="text-green-400"
+        />
+        {isAbiertaActiva ? (
+          <SummaryBox label="Total cobrado" value={formatPrice(liveTotalCobrado)} colorCls="text-primary" />
+        ) : (
+          <SummaryBox
+            label="Cuadre"
+            value={formatPrice(jornada.cuadre)}
+            colorCls={Math.abs(Number(jornada.cuadre) || 0) < 1 ? 'text-green-400' : 'text-red-400'}
+          />
+        )}
       </div>
 
       {/* Productos vendidos en esta jornada */}
@@ -421,9 +481,27 @@ const CierresTab = ({ dateRange }) => {
       try {
         const fromObj = startOfDay(parseISO(dateRange.from));
         const toObj = endOfDay(parseISO(dateRange.to));
-        const filter = `estado='cerrada' && fecha >= "${fromObj.toISOString()}" && fecha <= "${toObj.toISOString()}"`;
+        // Filtramos jornadas a través de los pedidos pagados del rango, no
+        // por jornadas.fecha. Motivos:
+        //  1) jornadas.fecha tiene timezone — una caja abierta a las 22 del
+        //     16 y cerrada 00:30 del 17 puede quedar con fecha=17 según
+        //     cómo se setea — eso rompe el filtro "Ayer = 16".
+        //  2) Si el admin se olvidó de cerrar la caja, queremos mostrarla
+        //     igual (con badge "Abierta") para que vea sus ventas.
+        // Approach: agarrar pedidos pagados en el rango → extraer jornadaId
+        // únicos → buscar esas jornadas sin importar fecha ni estado.
+        const orderFilter = `paymentStatus='Pagado' && orderStatus != 'Cancelado' && created >= "${fromObj.toISOString()}" && created <= "${toObj.toISOString()}"`;
+        const paidOrders = await pb.collection('orders').getFullList({
+          filter: orderFilter, requestKey: null, fields: 'jornadaId',
+        });
+        const jornadaIds = [...new Set(paidOrders.map((o) => o.jornadaId).filter(Boolean))];
+        if (jornadaIds.length === 0) {
+          if (!cancelled) setJornadas([]);
+          return;
+        }
+        const idFilter = jornadaIds.map((id) => `id="${id}"`).join(' || ');
         const results = await pb.collection('jornadas').getFullList({
-          filter, sort: '-fecha,-horaCierre', requestKey: null,
+          filter: idFilter, sort: '-fecha,-horaCierre', requestKey: null,
         });
         if (!cancelled) setJornadas(results);
       } catch (err) {
@@ -455,6 +533,10 @@ const CierresTab = ({ dateRange }) => {
     <div className="space-y-2">
       {jornadas.map((j) => {
         const isOpen = expandedId === j.id;
+        // Jornada todavía abierta: los campos de cierre (totalEfectivo,
+        // cuadre, etc.) están vacíos hasta que el admin la cierre. La
+        // mostramos igual con badge para que vea que hay actividad.
+        const isAbierta = j.estado === 'abierta';
         const fechaTxt = (() => {
           try { return format(parseISO(j.fecha), "d MMM yyyy", { locale: es }); }
           catch { return j.fecha; }
@@ -462,8 +544,9 @@ const CierresTab = ({ dateRange }) => {
         const cuadreOk = Math.abs(Number(j.cuadre) || 0) < 1;
         const cuadreCls = cuadreOk ? 'text-green-400' : 'text-red-400';
         const totalFacturado = (Number(j.totalEfectivo) || 0) + (Number(j.totalTransferencias) || 0);
+        const borderL = isAbierta ? 'border-l-[4px] border-l-amber-500' : 'border-l-[4px] border-l-primary/30';
         return (
-          <div key={j.id} className="bg-card border border-border rounded-lg overflow-hidden shadow-sm">
+          <div key={j.id} className={`bg-card border border-border ${borderL} rounded-lg overflow-hidden shadow-sm`}>
             <button
               type="button"
               onClick={() => setExpandedId(isOpen ? null : j.id)}
@@ -473,32 +556,50 @@ const CierresTab = ({ dateRange }) => {
                 {isOpen ? <ChevronUp className="w-4 h-4 text-primary" /> : <ChevronDown className="w-4 h-4 text-primary" />}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-black uppercase tracking-wide truncate">{fechaTxt}</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-black uppercase tracking-wide truncate">{fechaTxt}</p>
+                  {isAbierta && (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30 text-[9px] font-black uppercase tracking-wider shrink-0">
+                      <Clock className="w-2.5 h-2.5 shrink-0" />
+                      Abierta
+                    </span>
+                  )}
+                </div>
                 <p className="text-[10px] font-bold uppercase text-muted-foreground tabular-nums">
-                  Apertura {j.horaApertura || '—'} · Cierre {j.horaCierre || '—'}
+                  Apertura {j.horaApertura || '—'} · Cierre {isAbierta ? 'sin cerrar' : (j.horaCierre || '—')}
                 </p>
               </div>
               <div className="hidden sm:flex items-center gap-4 text-right">
-                <div>
-                  <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Pedidos</p>
-                  <p className="text-sm font-black tabular-nums">{j.totalPedidos || 0}</p>
-                </div>
-                <div>
-                  <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Facturado</p>
-                  <p className="text-sm font-black tabular-nums text-primary">{formatPrice(totalFacturado)}</p>
-                </div>
-                <div>
-                  <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Cuadre</p>
-                  <p className={`text-sm font-black tabular-nums ${cuadreCls}`}>{formatPrice(j.cuadre)}</p>
-                </div>
+                {isAbierta ? (
+                  <p className="text-[10px] font-black uppercase tracking-widest text-amber-400">
+                    Expandí para ver detalle en vivo
+                  </p>
+                ) : (
+                  <>
+                    <div>
+                      <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Pedidos</p>
+                      <p className="text-sm font-black tabular-nums">{j.totalPedidos || 0}</p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Facturado</p>
+                      <p className="text-sm font-black tabular-nums text-primary">{formatPrice(totalFacturado)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Cuadre</p>
+                      <p className={`text-sm font-black tabular-nums ${cuadreCls}`}>{formatPrice(j.cuadre)}</p>
+                    </div>
+                  </>
+                )}
               </div>
             </button>
             {/* En mobile: chips abajo del header */}
-            <div className="sm:hidden px-4 pb-3 flex gap-2 flex-wrap text-[10px] font-bold tabular-nums">
-              <span className="px-2 py-0.5 rounded bg-background border border-border">{j.totalPedidos || 0} pedidos</span>
-              <span className="px-2 py-0.5 rounded bg-background border border-border text-primary">{formatPrice(totalFacturado)}</span>
-              <span className={`px-2 py-0.5 rounded bg-background border border-border ${cuadreCls}`}>Cuadre {formatPrice(j.cuadre)}</span>
-            </div>
+            {!isAbierta && (
+              <div className="sm:hidden px-4 pb-3 flex gap-2 flex-wrap text-[10px] font-bold tabular-nums">
+                <span className="px-2 py-0.5 rounded bg-background border border-border">{j.totalPedidos || 0} pedidos</span>
+                <span className="px-2 py-0.5 rounded bg-background border border-border text-primary">{formatPrice(totalFacturado)}</span>
+                <span className={`px-2 py-0.5 rounded bg-background border border-border ${cuadreCls}`}>Cuadre {formatPrice(j.cuadre)}</span>
+              </div>
+            )}
             {isOpen && <CierreDetalle jornada={j} />}
           </div>
         );
