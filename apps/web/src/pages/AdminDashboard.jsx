@@ -1229,6 +1229,10 @@ const CajaCard = ({ currentUserId, jornada, jornadaLoading, refreshKey, onJornad
 const AdminDashboard = () => {
   const [products, setProducts] = useState([]);
   const [customers, setCustomers] = useState([]);
+  // Error de la query a `clientes` si falla — se muestra como banner en
+  // el tab Clientes para diagnosticar 404/403/401 en lugar de mentir
+  // con "Sin clientes registrados".
+  const [customersError, setCustomersError] = useState(null);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [productFormOpen, setProductFormOpen] = useState(false);
@@ -1474,13 +1478,24 @@ const AdminDashboard = () => {
   const loadData = async () => {
     try {
       // `clientes` es la collection auth dedicada para clientes del e-commerce.
-      // Cae a [] silenciosamente si todavía no se aplicó la migración.
+      // Si la query falla, capturamos el error para distinguir 3 casos en UI:
+      //   - 404: collection no existe (migración 1777400000 no corrió).
+      //   - 403/401: rule rechaza o sesión inválida (rare).
+      //   - otros: error desconocido (mostrar en consola + toast).
+      // Si la query OK pero devuelve [], es simplemente "sin clientes todavía".
       const fetchClientes = pb.collection('clientes')
-        .getFullList({ sort: 'created', requestKey: null })
+        .getFullList({ sort: '-created', requestKey: null })
+        .then((data) => ({ ok: true, data, error: null }))
         .catch((err) => {
-          if (err?.status === 404 || err?.status === 400) return [];
-          console.error('[AdminDashboard] clientes fetch failed:', err);
-          return [];
+          const status = err?.status;
+          const msg = err?.message || 'sin mensaje';
+          console.error('[AdminDashboard] clientes fetch failed:', { status, message: msg, data: err?.response?.data });
+          let userHint = '';
+          if (status === 404) userHint = 'La collection "clientes" no existe en PB — falta correr la migración 1777400000. Reiniciá drip-pocketbase.';
+          else if (status === 403) userHint = 'Sin permisos para listar clientes. Verificá las rules de la collection en /_/.';
+          else if (status === 401) userHint = 'Sesión expirada — volvé a loguearte.';
+          else userHint = `Error al cargar clientes (${status || 'sin status'}): ${msg}`;
+          return { ok: false, data: [], error: userHint };
         });
       const [productsData, customersData, ordersData] = await Promise.all([
         pb.collection('products').getFullList({ sort: 'orden,created', requestKey: null }),
@@ -1488,7 +1503,12 @@ const AdminDashboard = () => {
         pb.collection('orders').getFullList({ sort: '-created', requestKey: null })
       ]);
       setProducts(productsData);
-      setCustomers(customersData);
+      // fetchClientes resuelve a { ok, data, error } para distinguir
+      // "sin clientes" de "fallo de query". Si hubo error, lo mostramos
+      // arriba de la lista en el tab Clientes en lugar de mentir con
+      // "Sin clientes registrados".
+      setCustomers(customersData.data || []);
+      setCustomersError(customersData.ok ? null : customersData.error);
       // Normalizamos orderStatus al leer por si quedó algún registro con los
       // nombres "modernos" (Enviado/Entregado) de una corrida antigua: lo
       // mapeamos a los legacy (En camino/Finalizado) que es lo que usa la
@@ -2514,14 +2534,32 @@ const AdminDashboard = () => {
                 </Button>
               </div>
 
+              {/* Banner de error si la query a clientes falló — visible
+                  encima de la lista (o solo, si quedó vacía). */}
+              {customersError && (
+                <Card className="bg-card border border-border border-l-[4px] border-l-red-500">
+                  <CardContent className="py-3 px-4">
+                    <p className="text-xs font-black uppercase tracking-wider text-red-400 mb-1">
+                      ⚠ No se pudieron cargar los clientes
+                    </p>
+                    <p className="text-[11px] text-muted-foreground font-medium leading-relaxed">
+                      {customersError}
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+
               {loading ? (
                 <div className="space-y-2">{[1, 2, 3].map(i => <Skeleton key={i} className="h-14 w-full rounded-lg" />)}</div>
               ) : customers.length === 0 ? (
-                <Card className="bg-card border-border">
-                  <CardContent className="py-12 text-center">
-                    <p className="text-sm font-bold uppercase text-muted-foreground">Sin clientes registrados</p>
-                  </CardContent>
-                </Card>
+                !customersError && (
+                  <Card className="bg-card border-border">
+                    <CardContent className="py-12 text-center">
+                      <p className="text-sm font-bold uppercase text-muted-foreground">Sin clientes registrados todavía</p>
+                      <p className="text-[10px] text-muted-foreground/70 font-medium mt-2">Los clientes aparecen acá cuando se registran al hacer su primer pedido.</p>
+                    </CardContent>
+                  </Card>
+                )
               ) : (
                 <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
                   <div className="overflow-x-auto">
