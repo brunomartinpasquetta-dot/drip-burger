@@ -52,6 +52,18 @@ const normalizeMethod = (raw) => {
   return '';
 };
 
+// Compat retro: orders viejos no traen incluyeFritas booleano. Asumimos:
+// hamburguesa (hasMedallions != false) → lleva fritas; nuggets → no.
+// Mismo helper que usan los tickets de impresión (PrintTicketDelivery,
+// PrintKitchenOrder) para mantener consistencia.
+const itemIncluyeFritas = (item) =>
+  typeof item?.incluyeFritas === 'boolean'
+    ? item.incluyeFritas
+    : item?.hasMedallions !== false;
+
+// Etiqueta única para la fila virtual de papas fritas en los rankings.
+const PAPAS_LABEL = 'PAPAS FRITAS (INCLUIDAS)';
+
 // ══════════════════════════════════════════════════════════════════
 // Selector de período (presets + custom)
 // ══════════════════════════════════════════════════════════════════
@@ -170,6 +182,7 @@ const ProductosTab = ({ dateRange }) => {
 
   const productMap = useMemo(() => {
     const map = {};
+    let papasCount = 0;
     orders.forEach((order) => {
       if (!Array.isArray(order.items)) return;
       order.items.forEach((item) => {
@@ -178,8 +191,15 @@ const ProductosTab = ({ dateRange }) => {
         const qty = Number(item.quantity) || 1;
         map[name].count += qty;
         map[name].revenue += (Number(item.price) || 0) * qty;
+        // Sumamos las porciones de papas en una fila virtual aparte.
+        // Las papas vienen INCLUIDAS con la hamburguesa (no se cobran),
+        // pero el admin quiere ver cuántas se sirven para stock/control.
+        if (itemIncluyeFritas(item)) papasCount += qty;
       });
     });
+    if (papasCount > 0) {
+      map[PAPAS_LABEL] = { count: papasCount, revenue: 0 };
+    }
     return map;
   }, [orders]);
 
@@ -300,6 +320,7 @@ const CierreDetalle = ({ jornada }) => {
 
   const productos = useMemo(() => {
     const map = {};
+    let papasCount = 0;
     pedidos.forEach((o) => {
       if (o.orderStatus === 'Cancelado') return;
       if (o.paymentStatus !== 'Pagado') return;
@@ -309,8 +330,14 @@ const CierreDetalle = ({ jornada }) => {
         const qty = Number(item.quantity) || 1;
         map[name].count += qty;
         map[name].revenue += (Number(item.price) || 0) * qty;
+        // Fila virtual de papas fritas (incluidas, $0) — para que el admin
+        // vea cuántas porciones se sirven aunque no facturen.
+        if (itemIncluyeFritas(item)) papasCount += qty;
       });
     });
+    if (papasCount > 0) {
+      map[PAPAS_LABEL] = { count: papasCount, revenue: 0 };
+    }
     return Object.entries(map)
       .map(([name, d]) => ({ name, ...d }))
       .sort((a, b) => b.count - a.count);
