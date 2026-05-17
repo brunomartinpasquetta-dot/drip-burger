@@ -64,6 +64,11 @@ const itemIncluyeFritas = (item) =>
 // Etiqueta única para la fila virtual de papas fritas en los rankings.
 const PAPAS_LABEL = 'PAPAS FRITAS (INCLUIDAS)';
 
+// Un pedido está "registrado" si tiene clienteId (collection clientes) o
+// user_id (collection users legacy). Si no tiene ninguno → invitado
+// (checkout sin cuenta).
+const isRegisteredOrder = (o) => Boolean(o?.clienteId || o?.user_id);
+
 // ══════════════════════════════════════════════════════════════════
 // Selector de período (presets + custom)
 // ══════════════════════════════════════════════════════════════════
@@ -215,6 +220,10 @@ const ProductosTab = ({ dateRange }) => {
   // realmente al negocio.
   const totalCobrado = orders.reduce((s, o) => s + (Number(o.totalAmount) || 0), 0);
   const totalEnvios = totalCobrado - totalRevenue;
+  // Breakdown registrados vs invitados — para que el admin vea cuántos
+  // pedidos del período vinieron de clientes con cuenta vs guest checkout.
+  const registeredCount = orders.filter(isRegisteredOrder).length;
+  const guestCount = orders.length - registeredCount;
 
   if (loading) return <Skeleton className="h-64 w-full rounded-xl" />;
   if (ranked.length === 0) {
@@ -246,6 +255,18 @@ const ProductosTab = ({ dateRange }) => {
           <p className="text-[9px] font-black uppercase tracking-widest opacity-80 mb-0.5">Total cobrado</p>
           <p className="text-base font-black tabular-nums">{formatPrice(totalCobrado)}</p>
         </div>
+      </div>
+
+      {/* Breakdown registrados vs invitados — mide qué tanto del volumen
+          viene de clientes con cuenta (recurrencia) vs guests one-off. */}
+      <div className="flex items-center gap-3 text-[11px] font-bold uppercase tracking-wider">
+        <span className="text-muted-foreground">{orders.length} pedidos:</span>
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-green-500/10 border border-green-500/30 text-green-400">
+          ✓ {registeredCount} registrados
+        </span>
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-muted/30 border border-border text-muted-foreground">
+          {guestCount} invitados
+        </span>
       </div>
 
     <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
@@ -459,44 +480,68 @@ const CierreDetalle = ({ jornada }) => {
         </table>
       </DetailSection>
 
-      {/* Pedidos asociados (todos los de la jornada, no solo cobrados) */}
-      <DetailSection
-        title={`Pedidos (${pedidos.length})`}
-        icon={<ShoppingBag className="w-3.5 h-3.5" />}
-        emptyMsg="Sin pedidos asociados"
-        empty={pedidos.length === 0}
-      >
-        <table className="w-full text-left border-collapse min-w-[600px]">
-          <thead>
-            <tr className="bg-muted/10 border-b border-border">
-              <th className="px-2 py-1 text-[9px] font-black uppercase tracking-widest text-muted-foreground">#</th>
-              <th className="px-2 py-1 text-[9px] font-black uppercase tracking-widest text-muted-foreground">Cliente</th>
-              <th className="px-2 py-1 text-[9px] font-black uppercase tracking-widest text-muted-foreground">Hora</th>
-              <th className="px-2 py-1 text-[9px] font-black uppercase tracking-widest text-muted-foreground">Estado</th>
-              <th className="px-2 py-1 text-[9px] font-black uppercase tracking-widest text-muted-foreground">Pago</th>
-              <th className="px-2 py-1 text-[9px] font-black uppercase tracking-widest text-muted-foreground text-right">Total</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {pedidos.map((o) => {
-              const cancelled = o.orderStatus === 'Cancelado';
-              const paid = o.paymentStatus === 'Pagado';
-              return (
-                <tr key={o.id} className={cancelled ? 'opacity-50' : ''}>
-                  <td className="px-2 py-1 text-xs font-black tabular-nums">#{o.orderNumber || o.id.slice(0, 6)}</td>
-                  <td className="px-2 py-1 text-xs font-bold uppercase truncate max-w-[140px]">{o.customerName || '-'}</td>
-                  <td className="px-2 py-1 text-xs font-bold tabular-nums text-muted-foreground">{o.deliveryTimeSlot || '-'}</td>
-                  <td className="px-2 py-1 text-[10px] font-black uppercase">{o.orderStatus || '-'}</td>
-                  <td className="px-2 py-1 text-[10px] font-black uppercase">
-                    <span className={paid ? 'text-green-400' : 'text-amber-400'}>{paid ? '✓' : '⏳'} {normalizeMethod(o.paymentMethod) || o.paymentMethod}</span>
-                  </td>
-                  <td className="px-2 py-1 text-xs font-black tabular-nums text-right text-primary">{formatPrice(o.totalAmount)}</td>
+      {/* Pedidos asociados (todos los de la jornada, no solo cobrados).
+          Mostramos breakdown registrados vs invitados en el título y un
+          chip verde/gris por fila para que el admin vea de un vistazo
+          cuántos clientes nuevos pasaron por la app. */}
+      {(() => {
+        const regsCount = pedidos.filter(isRegisteredOrder).length;
+        const guestCount = pedidos.length - regsCount;
+        return (
+          <DetailSection
+            title={`Pedidos (${pedidos.length} · ${regsCount} registrados · ${guestCount} invitados)`}
+            icon={<ShoppingBag className="w-3.5 h-3.5" />}
+            emptyMsg="Sin pedidos asociados"
+            empty={pedidos.length === 0}
+          >
+            <table className="w-full text-left border-collapse min-w-[640px]">
+              <thead>
+                <tr className="bg-muted/10 border-b border-border">
+                  <th className="px-2 py-1 text-[9px] font-black uppercase tracking-widest text-muted-foreground">#</th>
+                  <th className="px-2 py-1 text-[9px] font-black uppercase tracking-widest text-muted-foreground">Cliente</th>
+                  <th className="px-2 py-1 text-[9px] font-black uppercase tracking-widest text-muted-foreground">Hora</th>
+                  <th className="px-2 py-1 text-[9px] font-black uppercase tracking-widest text-muted-foreground">Estado</th>
+                  <th className="px-2 py-1 text-[9px] font-black uppercase tracking-widest text-muted-foreground">Pago</th>
+                  <th className="px-2 py-1 text-[9px] font-black uppercase tracking-widest text-muted-foreground text-right">Total</th>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </DetailSection>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {pedidos.map((o) => {
+                  const cancelled = o.orderStatus === 'Cancelado';
+                  const paid = o.paymentStatus === 'Pagado';
+                  const registered = isRegisteredOrder(o);
+                  return (
+                    <tr key={o.id} className={cancelled ? 'opacity-50' : ''}>
+                      <td className="px-2 py-1 text-xs font-black tabular-nums">#{o.orderNumber || o.id.slice(0, 6)}</td>
+                      <td className="px-2 py-1 text-xs">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="font-bold uppercase truncate max-w-[120px]">{o.customerName || '-'}</span>
+                          <span
+                            title={registered ? 'Cliente registrado' : 'Pedido de invitado (sin cuenta)'}
+                            className={`shrink-0 inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[8px] font-black uppercase tracking-wider border ${
+                              registered
+                                ? 'bg-green-500/10 border-green-500/40 text-green-400'
+                                : 'bg-muted/30 border-border text-muted-foreground'
+                            }`}
+                          >
+                            {registered ? '✓ REG' : 'INV'}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-2 py-1 text-xs font-bold tabular-nums text-muted-foreground">{o.deliveryTimeSlot || '-'}</td>
+                      <td className="px-2 py-1 text-[10px] font-black uppercase">{o.orderStatus || '-'}</td>
+                      <td className="px-2 py-1 text-[10px] font-black uppercase">
+                        <span className={paid ? 'text-green-400' : 'text-amber-400'}>{paid ? '✓' : '⏳'} {normalizeMethod(o.paymentMethod) || o.paymentMethod}</span>
+                      </td>
+                      <td className="px-2 py-1 text-xs font-black tabular-nums text-right text-primary">{formatPrice(o.totalAmount)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </DetailSection>
+        );
+      })()}
     </div>
   );
 };
