@@ -64,6 +64,19 @@ const itemIncluyeFritas = (item) =>
 // Etiqueta única para la fila virtual de papas fritas en los rankings.
 const PAPAS_LABEL = 'PAPAS FRITAS (INCLUIDAS)';
 
+// Medallones de un pedido = suma de pattyCount * quantity por cada item
+// que es hamburguesa (hasMedallions != false). Nuggets y similares no
+// cuentan. Sirve para que el local proyecte compra de carne.
+const orderMedallones = (order) => {
+  if (!Array.isArray(order?.items)) return 0;
+  return order.items.reduce((sum, item) => {
+    if (item?.hasMedallions === false) return sum;
+    const patty = Number(item?.pattyCount) || 0;
+    const qty = Number(item?.quantity) || 0;
+    return sum + patty * qty;
+  }, 0);
+};
+
 // Un pedido está "registrado" si tiene clienteId (collection clientes) o
 // user_id (collection users legacy). Si no tiene ninguno → invitado
 // (checkout sin cuenta).
@@ -225,6 +238,21 @@ const ProductosTab = ({ dateRange }) => {
   const registeredCount = orders.filter(isRegisteredOrder).length;
   const guestCount = orders.length - registeredCount;
 
+  // Medallones — total del período + desglose por día (para proyectar
+  // compra de carne). El día se toma de `created` (slice YYYY-MM-DD).
+  const totalMedallones = orders.reduce((s, o) => s + orderMedallones(o), 0);
+  const medallonesPorDia = useMemo(() => {
+    const map = {};
+    orders.forEach((o) => {
+      const dia = (o.created || '').slice(0, 10);
+      if (!dia) return;
+      if (!map[dia]) map[dia] = { dia, medallones: 0, pedidos: 0 };
+      map[dia].medallones += orderMedallones(o);
+      map[dia].pedidos += 1;
+    });
+    return Object.values(map).sort((a, b) => b.dia.localeCompare(a.dia));
+  }, [orders]);
+
   if (loading) return <Skeleton className="h-64 w-full rounded-xl" />;
   if (ranked.length === 0) {
     return (
@@ -239,10 +267,10 @@ const ProductosTab = ({ dateRange }) => {
 
   return (
     <div className="space-y-3">
-      {/* Resumen explícito — 3 números para evitar que se confundan con el
-          cierre de caja. La "recaudación" del ranking de productos no incluye
-          envío; el cierre de caja sí. Mostramos ambos. */}
-      <div className="grid grid-cols-3 gap-2">
+      {/* Resumen explícito — 4 números. La "recaudación" del ranking de
+          productos no incluye envío; el cierre de caja sí. Mostramos ambos
+          + medallones (para proyección de compra de carne). */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         <div className="bg-card border border-border rounded-lg p-3">
           <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-0.5">Productos vendidos</p>
           <p className="text-base font-black tabular-nums">{formatPrice(totalRevenue)}</p>
@@ -250,6 +278,10 @@ const ProductosTab = ({ dateRange }) => {
         <div className="bg-card border border-border rounded-lg p-3">
           <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-0.5">Envíos</p>
           <p className="text-base font-black tabular-nums">{formatPrice(totalEnvios)}</p>
+        </div>
+        <div className="bg-card border border-border border-l-[4px] border-l-amber-500 rounded-lg p-3">
+          <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-0.5">Medallones</p>
+          <p className="text-base font-black tabular-nums text-amber-400">{totalMedallones}</p>
         </div>
         <div className="bg-primary text-primary-foreground border border-primary rounded-lg p-3">
           <p className="text-[9px] font-black uppercase tracking-widest opacity-80 mb-0.5">Total cobrado</p>
@@ -301,6 +333,48 @@ const ProductosTab = ({ dateRange }) => {
         </table>
       </div>
     </div>
+
+      {/* Medallones por día — desglose para proyectar compra de carne.
+          Cada hamburguesa suma pattyCount × quantity; nuggets no cuentan. */}
+      <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
+        <div className="px-3 py-2 border-b border-border bg-amber-500/5 flex items-center gap-2">
+          <span className="text-amber-400 text-xs">●</span>
+          <span className="text-[10px] font-black uppercase tracking-widest">Medallones por día</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse min-w-[420px]">
+            <thead>
+              <tr className="bg-muted/20 border-b border-border">
+                <th className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Día</th>
+                <th className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground text-right">Pedidos</th>
+                <th className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-amber-400 text-right">Medallones</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {medallonesPorDia.map((d) => {
+                const fechaTxt = (() => {
+                  try { return format(parseISO(d.dia), "d MMM yyyy", { locale: es }); }
+                  catch { return d.dia; }
+                })();
+                return (
+                  <tr key={d.dia} className="hover:bg-muted/10 transition-colors">
+                    <td className="px-3 py-2 font-black text-xs uppercase">{fechaTxt}</td>
+                    <td className="px-3 py-2 text-xs font-bold tabular-nums text-right text-muted-foreground">{d.pedidos}</td>
+                    <td className="px-3 py-2 text-sm font-black tabular-nums text-right text-amber-400">{d.medallones}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot className="bg-amber-500/10 border-t-2 border-amber-500/30">
+              <tr>
+                <td className="px-3 py-2 text-[10px] font-black uppercase tracking-widest">Total</td>
+                <td className="px-3 py-2 text-xs font-black tabular-nums text-right">{orders.length}</td>
+                <td className="px-3 py-2 text-sm font-black tabular-nums text-right text-amber-400">{totalMedallones}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
     </div>
   );
 };
@@ -367,6 +441,8 @@ const CierreDetalle = ({ jornada }) => {
   const pedidosCobrados = pedidos.filter((p) => p.paymentStatus === 'Pagado' && p.orderStatus !== 'Cancelado');
   const ingresos = movimientos.filter((m) => m.tipo === 'ingreso');
   const egresos = movimientos.filter((m) => m.tipo === 'egreso');
+  // Medallones de la jornada — solo pedidos cobrados, no cancelados.
+  const medallonesJornada = pedidosCobrados.reduce((s, o) => s + orderMedallones(o), 0);
 
   // Cálculos en VIVO desde los pedidos (no de los campos congelados de
   // jornada). Cubre el caso "jornada abierta" donde totalEfectivo/cuadre/etc
@@ -396,8 +472,9 @@ const CierreDetalle = ({ jornada }) => {
           cálculos en vivo desde paymentMethod + totalAmount de cada pedido
           cobrado. Si está cerrada, debería coincidir con los campos
           congelados (sino el cierre se calculó mal en su momento). */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
         <SummaryBox label="Pedidos cobrados" value={pedidosCobrados.length} />
+        <SummaryBox label="Medallones" value={medallonesJornada} colorCls="text-amber-400" />
         <SummaryBox label="Efectivo" value={formatPrice(liveCobrosEfectivo)} colorCls="text-orange-400" />
         <SummaryBox
           label={liveCobrosMP > 0 ? 'Transf. + MP' : 'Transferencias'}
