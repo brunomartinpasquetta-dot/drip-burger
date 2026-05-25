@@ -139,7 +139,28 @@ const attachListeners = (client) => {
         ready = false;
         statusInternal = 'disconnected';
         lastErrorMsg = String(reason);
-        logger.warn(`WhatsApp desconectado: ${reason}. Reintentando en 5s...`);
+        const reasonStr = String(reason || '').toUpperCase();
+        // Desvinculación remota (LOGOUT desde el celular del local) o
+        // navegación forzada de WA Web: la sesión está MUERTA, no tiene
+        // sentido retry — hay que destruir el client y esperar a que el
+        // admin reconecte manualmente desde /gestion/config. Eso emitirá
+        // un QR nuevo via initWhatsApp({ force: true, wipeSession: true }).
+        const isPermanent = reasonStr.includes('LOGOUT') ||
+            reasonStr.includes('NAVIGATION') ||
+            reasonStr.includes('CONFLICT') ||
+            reasonStr.includes('UNPAIRED');
+        if (isPermanent) {
+            logger.warn(`WhatsApp desvinculado remotamente (${reason}). Limpiando client — el admin debe reconectar manualmente.`);
+            try { await client.destroy(); } catch (e) { /* noop */ }
+            whatsappClient = null;
+            lastQrCode = null;
+            updateIntegrationRecord({ status: 'disconnected', lastError: `Desvinculado: ${reason}` });
+            return;
+        }
+        // Desconexión transitoria (red caída, restart de WA Web, etc):
+        // reintentar con el MISMO client en 5s. Esto cubre el caso "se
+        // cortó internet del local" sin requerir intervención del admin.
+        logger.warn(`WhatsApp desconectado (transitorio): ${reason}. Reintentando en 5s...`);
         updateIntegrationRecord({ status: 'disconnected', lastError: String(reason) });
         setTimeout(() => {
             try {
@@ -160,7 +181,37 @@ const attachListeners = (client) => {
  * @param {{ force?: boolean }} opts - force=true ignora el flag "enabled" de PB
  *   (útil para el endpoint /connect que dispara init por pedido explícito del admin)
  */
-export const initWhatsApp = async ({ force = false } = {}) => {
+export const initWhatsApp = async ({ force = false, wipeSession = false } = {}) => {
+    // Si force=true y ya había un client en memoria, destruirlo primero.
+    // Sin esto, después de una desvinculación remota (el cliente del local
+    // toca "cerrar sesión" en su celular), `whatsappClient` queda no-null
+    // con una sesión muerta. El early-return retornaba el client viejo y
+    // jamás se emitía un QR nuevo → pantalla de "Conectar" colgada.
+    // Si además wipeSession=true, borramos la carpeta wa-session/ local
+    // para garantizar QR fresco (re-pairing desde cero).
+    if (force && whatsappClient) {
+        try {
+            await whatsappClient.destroy();
+            logger.info('[whatsappService] client viejo destruido antes de reinicializar (force)');
+        } catch (err) {
+            logger.warn(`[whatsappService] destroy del client viejo falló (sigo igual): ${err?.message || err}`);
+        }
+        whatsappClient = null;
+        ready = false;
+        lastQrCode = null;
+        statusInternal = 'disconnected';
+    }
+    if (force && wipeSession) {
+        try {
+            if (fs.existsSync(SESSION_DIR)) {
+                fs.rmSync(SESSION_DIR, { recursive: true, force: true });
+                logger.info('[whatsappService] wa-session/ eliminada por wipeSession=true');
+            }
+        } catch (err) {
+            logger.warn(`[whatsappService] no pude borrar wa-session: ${err?.message || err}`);
+        }
+    }
+
     if (whatsappClient) return whatsappClient;
 
     if (!force) {

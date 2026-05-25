@@ -92,16 +92,29 @@ router.get('/whatsapp/status', async (req, res) => {
 
 // POST /integrations/whatsapp/connect
 // Dispara initWhatsApp({ force: true }) + marca enabled=true en PB.
-// Responde el QR actual si ya hay uno, o status "connected" si ya estaba listo.
+// Si la integración estaba en disconnected/error (típicamente desvinculación
+// remota), pasa wipeSession=true para garantizar QR fresco. Si estaba en
+// connected/pending_qr, no wipea (preserva la sesión válida).
 router.post('/whatsapp/connect', async (req, res) => {
     try {
+        // Leer estado actual ANTES de patchear PB, para decidir si wipear.
+        let prevStatus = null;
+        try {
+            const rec = await getIntegration('whatsapp');
+            prevStatus = rec?.status || null;
+        } catch (e) { /* noop */ }
+        const liveBefore = getWhatsAppStatus();
+        const shouldWipe = (prevStatus === 'disconnected' || prevStatus === 'error') ||
+            (liveBefore.status === 'disconnected' || liveBefore.status === 'error');
+
         await patchIntegration('whatsapp', { enabled: true, status: 'pending_qr', lastError: '' });
-        await initWhatsApp({ force: true });
+        await initWhatsApp({ force: true, wipeSession: shouldWipe });
 
         // Dar unos segundos para que el client emita QR o ready.
-        // No bloqueamos más de 8s — el frontend hará polling /status.
+        // No bloqueamos más de 12s — el frontend hará polling /status.
+        // Con wipeSession el initialize() tarda un poco más (re-pairing).
         const start = Date.now();
-        while (Date.now() - start < 8000) {
+        while (Date.now() - start < 12000) {
             if (waIsReady()) break;
             if (getWhatsAppQr()) break;
             await new Promise(r => setTimeout(r, 300));
@@ -113,6 +126,7 @@ router.post('/whatsapp/connect', async (req, res) => {
             status: live.status,
             phoneNumber: live.phoneNumber,
             qrCode: live.status === 'pending_qr' ? getWhatsAppQr() : null,
+            wipedSession: shouldWipe,
         });
     } catch (err) {
         logger.error(`[integrations/whatsapp/connect] ${err.message}`);
