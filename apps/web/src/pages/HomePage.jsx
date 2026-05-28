@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext.jsx';
 import Header from '@/components/Header.jsx';
 import AuthModal from '@/components/AuthModal.jsx';
 import ProductCard from '@/components/ProductCard.jsx';
+import BannerCarousel from '@/components/BannerCarousel.jsx';
 import { Button } from '@/components/ui/button';
 import {
   Carousel,
@@ -138,6 +139,9 @@ const HomePage = () => {
           </div>
         </section>
 
+        {/* Banner promocional — rota cada 5s, oculto si no hay banners activos */}
+        <BannerCarousel />
+
         {/* Menu Carousel Section — solo desktop (md+). Altura fija 48vh + centrado vertical
             para que hero (52vh) + menú (48vh) = 100vh sin scroll en primera pantalla.
             En mobile se accede via botón "Ver Menú" del hero. */}
@@ -190,6 +194,7 @@ const HomePage = () => {
                   {products.map((product) => (
                     <CarouselItem
                       key={product.id}
+                      id={`product-${product.id}`}
                       className="pl-4 md:basis-1/2 lg:basis-1/3 xl:basis-1/4"
                     >
                       <ProductCard product={product} />

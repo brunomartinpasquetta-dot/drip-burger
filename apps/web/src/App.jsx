@@ -15,6 +15,7 @@ import AdminDashboard from './pages/AdminDashboard.jsx';
 import SalesReportingPage from './pages/SalesReportingPage.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
 import EditOrdersPage from './pages/EditOrdersPage.jsx';
+import BannersAdminPage from './pages/BannersAdminPage.jsx';
 import { PaymentSuccessPage, PaymentFailedPage, PaymentPendingPage } from './pages/PaymentReturnPages.jsx';
 import { Toaster } from '@/components/ui/sonner';
 
@@ -88,6 +89,14 @@ function App() {
             />
             {/* Alias legacy — redirige al nuevo path */}
             <Route path="/gestion/configuracion" element={<Navigate to="/gestion/config" replace />} />
+            <Route
+              path="/gestion/banners"
+              element={
+                <AdminRoute>
+                  <BannersAdminPage />
+                </AdminRoute>
+              }
+            />
 
             {/* Fallback */}
             <Route path="*" element={<Navigate to="/" replace />} />
