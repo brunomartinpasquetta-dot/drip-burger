@@ -1,0 +1,86 @@
+# Compose de producción para Drip Burger (dripburger.shop).
+#
+# Servicios:
+#   - pocketbase: persistencia de orders/products/users/integrations/banners.
+#   - api (Express): drip-api con whatsapp-web.js. Necesita Chromium
+#     en la imagen (ver apps/api/Dockerfile).
+#   - web: drip-web (frontend Vite buildeado y servido por nginx).
+#
+# Volúmenes nombrados:
+#   - drip-wa-session: sesión persistida de whatsapp-web.js para que el
+#     QR no se pida de nuevo en cada restart/rebuild del container.
+#     NUNCA correr `docker compose down -v` salvo querer perder la sesión.
+#
+# Bind mounts:
+#   - ./apps/pocketbase/pb_data: SQLite + uploads de PocketBase.
+#   - ./apps/pocketbase/pb_migrations + pb_hooks: aplicados en cada arranque.
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    image: drip-burger-web
+    container_name: drip-web
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3001:80"
+    depends_on:
+      - api
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    image: drip-burger-api
+    container_name: drip-api
+    depends_on:
+      pocketbase:
+        condition: service_healthy
+    # Cargamos credenciales/secrets desde apps/api/.env (no commiteado).
+    # OJO: si ese .env tiene POCKETBASE_URL=localhost o un dominio público,
+    # se ignora porque el bloque `environment:` de abajo lo pisa.
+    # Eso es deliberado — el container API tiene que llegar a PB por el
+    # nombre de servicio de la red Docker, no por dominio ni localhost.
+    env_file:
+      - ./apps/api/.env
+    environment:
+      - NODE_ENV=production
+      - PORT=3002
+      # SIEMPRE forzar URL interna: docker-compose default network expone
+      # cada servicio por su nombre. `pocketbase` resuelve al container drip-pocketbase.
+      - POCKETBASE_URL=http://pocketbase:8090
+      - PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+      - PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+    volumes:
+      # Persiste la sesión de WhatsApp así no se pide QR en cada restart.
+      # whatsapp-web.js / LocalAuth guarda session ID + cookies acá.
+      - drip-wa-session:/app/wa-session
+    # Chromium crashea con /dev/shm de 64MB (default Docker) bajo carga real.
+    # Aunque pasamos --disable-dev-shm-usage, este margen evita corner cases
+    # con zygote/renderer y reduce "Failed to launch browser, code 21".
+    shm_size: '1gb'
+    ports:
+      - "127.0.0.1:3002:3002"
+    restart: unless-stopped
+
+  pocketbase:
+    image: ghcr.io/muchobien/pocketbase:latest
+    container_name: drip-pocketbase
+    restart: unless-stopped
+    ports:
+      # 8091 en host porque 8090 lo usa sinatra-pocketbase (co-inquilino del VPS).
+      # Internamente sigue siendo 8090; el API la accede por http://pocketbase:8090.
+      - "127.0.0.1:8091:8090"
+    volumes:
+      - ./apps/pocketbase/pb_data:/pb_data
+      - ./apps/pocketbase/pb_migrations:/pb_migrations
+      - ./apps/pocketbase/pb_hooks:/pb_hooks
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8090/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  drip-wa-session:
