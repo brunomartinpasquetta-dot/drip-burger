@@ -104,6 +104,16 @@ const HomePage = () => {
                 No venimos a competir, venimos a marcar la diferencia, mordida a mordida.
               </motion.p>
               
+              {/* Banner promocional — arriba del botón Hacer Pedido */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.25 }}
+                className="mb-6 md:mb-4"
+              >
+                <BannerCarousel />
+              </motion.div>
+
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -138,9 +148,6 @@ const HomePage = () => {
             </div>
           </div>
         </section>
-
-        {/* Banner promocional — rota cada 5s, oculto si no hay banners activos */}
-        <BannerCarousel />
 
         {/* Menu Carousel Section — solo desktop (md+). Altura fija 48vh + centrado vertical
             para que hero (52vh) + menú (48vh) = 100vh sin scroll en primera pantalla.

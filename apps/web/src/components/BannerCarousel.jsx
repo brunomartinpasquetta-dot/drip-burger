@@ -20,25 +20,32 @@ const BannerCarousel = () => {
   const touchStartX = useRef(null);
   const navigate = useNavigate();
 
+  // Fallback estático: si no hay banners en PB, mostrar el banner default
+  // que vive en /public/banner.jpg. Cuando admin crea uno en PB, lo reemplaza.
+  const effectiveBanners = (banners && banners.length > 0)
+    ? banners
+    : [{ id: '__default__', titulo: '', __staticSrc: '/banner.jpg' }];
+  const len = effectiveBanners.length;
+
   // Si cambia la lista, asegurar que el índice activo siga siendo válido.
   useEffect(() => {
-    if (index >= banners.length) setIndex(0);
-  }, [banners.length, index]);
+    if (index >= len) setIndex(0);
+  }, [len, index]);
 
   // Auto-rotate solo si hay >1 banner.
   useEffect(() => {
-    if (banners.length <= 1) return undefined;
+    if (len <= 1) return undefined;
     const id = setInterval(() => {
       if (!hoveringRef.current) {
-        setIndex((i) => (i + 1) % banners.length);
+        setIndex((i) => (i + 1) % len);
       }
     }, ROTATE_MS);
     return () => clearInterval(id);
-  }, [banners.length]);
+  }, [len]);
 
-  if (!banners || banners.length === 0) return null;
+  if (len === 0) return null;
 
-  const goTo = (i) => setIndex(((i % banners.length) + banners.length) % banners.length);
+  const goTo = (i) => setIndex(((i % effectiveBanners.length) + effectiveBanners.length) % effectiveBanners.length);
 
   const handleCtaClick = (banner) => {
     const pid = banner.ctaProductoId;
@@ -63,22 +70,33 @@ const BannerCarousel = () => {
     const endX = e.changedTouches[0]?.clientX ?? touchStartX.current;
     const diff = endX - touchStartX.current;
     touchStartX.current = null;
-    if (Math.abs(diff) < SWIPE_THRESHOLD || banners.length <= 1) return;
+    if (Math.abs(diff) < SWIPE_THRESHOLD || effectiveBanners.length <= 1) return;
     goTo(index + (diff < 0 ? 1 : -1));
+  };
+
+  // Click en banner sin CTA propio → llevar al menú (incentivo a pedir)
+  const handleBannerClick = (banner) => {
+    if (banner.ctaTexto) return; // ya tiene su propio botón
+    handleCtaClick(banner);
   };
 
   return (
     <div className="container mx-auto px-4 sm:px-6 lg:px-8 pt-4">
       <div
-        className="relative w-full h-40 md:h-56 rounded-lg overflow-hidden mb-6 bg-[#1a1a1a]"
+        className="banner-promo relative w-full aspect-[5/2] rounded-xl overflow-hidden mb-6 bg-[#1a1a1a] cursor-pointer ring-1 ring-[#F5A800]/30 shadow-[0_0_24px_rgba(245,168,0,0.25)]"
         onMouseEnter={() => { hoveringRef.current = true; }}
         onMouseLeave={() => { hoveringRef.current = false; }}
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
+        onClick={() => handleBannerClick(effectiveBanners[index])}
+        role="button"
+        tabIndex={0}
       >
-        {banners.map((banner, i) => {
+        {effectiveBanners.map((banner, i) => {
           const isActive = i === index;
-          const imgUrl = banner.imagen ? pb.files.getURL(banner, banner.imagen) : null;
+          const imgUrl = banner.__staticSrc
+            ? banner.__staticSrc
+            : (banner.imagen ? pb.files.getURL(banner, banner.imagen) : null);
           const broken = imgError[banner.id];
           return (
             <div
@@ -132,9 +150,9 @@ const BannerCarousel = () => {
         })}
 
         {/* Dots — solo si hay más de un banner */}
-        {banners.length > 1 && (
+        {effectiveBanners.length > 1 && (
           <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5">
-            {banners.map((b, i) => (
+            {effectiveBanners.map((b, i) => (
               <button
                 key={b.id}
                 type="button"

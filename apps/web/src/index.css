@@ -85,6 +85,59 @@
     font-weight: bold;
     font-size: 1.75rem;
   }
+
+  /* Banner promocional — latido + glow pulsante + shimmer diagonal para llamar la atención */
+  .banner-promo {
+    animation: banner-heartbeat 2.4s ease-in-out infinite;
+    transition: transform 0.25s ease;
+    will-change: transform, box-shadow;
+  }
+  .banner-promo:hover {
+    animation-play-state: paused;
+    transform: scale(1.02);
+  }
+  .banner-promo::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      110deg,
+      transparent 30%,
+      rgba(255, 255, 255, 0.18) 50%,
+      transparent 70%
+    );
+    transform: translateX(-100%);
+    animation: banner-shimmer 4s ease-in-out infinite;
+    pointer-events: none;
+    z-index: 15;
+  }
+  /* Latido tipo corazón: doble pulso rápido + glow sincronizado, luego descanso */
+  @keyframes banner-heartbeat {
+    0% {
+      transform: scale(1);
+      box-shadow: 0 0 16px rgba(245, 168, 0, 0.18);
+    }
+    12% {
+      transform: scale(1.025);
+      box-shadow: 0 0 34px rgba(245, 168, 0, 0.6);
+    }
+    24% {
+      transform: scale(1);
+      box-shadow: 0 0 16px rgba(245, 168, 0, 0.18);
+    }
+    36% {
+      transform: scale(1.018);
+      box-shadow: 0 0 26px rgba(245, 168, 0, 0.45);
+    }
+    50%, 100% {
+      transform: scale(1);
+      box-shadow: 0 0 16px rgba(245, 168, 0, 0.18);
+    }
+  }
+  @keyframes banner-shimmer {
+    0% { transform: translateX(-100%); }
+    60%, 100% { transform: translateX(100%); }
+  }
 }
 
 @layer utilities {
