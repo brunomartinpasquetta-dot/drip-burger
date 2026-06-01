@@ -22,12 +22,73 @@ let statusInternal = 'disconnected'; // 'disconnected' | 'pending_qr' | 'connect
 let lastErrorMsg = null;
 let connectedPhone = null;
 
+// Puppeteer setup para Docker (alineado con Sinatra):
+//   - executablePath: respeta PUPPETEER_EXECUTABLE_PATH (en compose se setea
+//     /usr/bin/chromium). Sin esto, puppeteer busca su Chromium descargado
+//     que no existe con `npm install --omit=dev`.
+//   - --no-sandbox/--disable-setuid-sandbox: para correr como root en docker.
+//   - --disable-dev-shm-usage: Docker default /dev/shm=64MB, Chromium crashea.
+//   - --no-zygote y resto: bypasean los "Code 21" típicos de Chromium en
+//     containers (zygote/user-ns fail).
 const createClient = () => new Client({
     authStrategy: new LocalAuth({ dataPath: SESSION_DIR }),
     puppeteer: {
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-default-browser-check',
+            '--no-zygote',
+            '--disable-extensions',
+            '--disable-background-networking',
+            '--disable-sync',
+            '--disable-translate',
+            '--hide-scrollbars',
+            '--metrics-recording-only',
+            '--mute-audio',
+        ],
     },
 });
+
+/**
+ * Borra el CONTENIDO de SESSION_DIR sin tocar el directorio en sí.
+ * Importante: en prod SESSION_DIR es un mount point del named volume
+ * `drip-wa-session`. Hacer `fs.rmSync(SESSION_DIR, ...)` falla con EBUSY
+ * porque el kernel no permite rmdir sobre un mount activo. Borrando solo
+ * los hijos (incluidos ocultos como SingletonLock) limpiamos la sesión
+ * pero el volumen sigue montado y disponible.
+ */
+const wipeSessionContents = () => {
+    if (!fs.existsSync(SESSION_DIR)) return;
+    for (const entry of fs.readdirSync(SESSION_DIR)) {
+        fs.rmSync(path.join(SESSION_DIR, entry), { recursive: true, force: true });
+    }
+};
+
+/**
+ * Mata cualquier lock file de Chromium en la sesión persistida. Sin esto,
+ * si un Chromium anterior quedó zombie (process killed sin limpiar) el
+ * próximo launch falla con "The profile appears to be in use by another
+ * Chromium process" (Code 21). Es safe correrlo siempre antes de init.
+ */
+const clearChromiumLocks = () => {
+    if (!fs.existsSync(SESSION_DIR)) return;
+    const walk = (dir) => {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            const full = path.join(dir, entry.name);
+            if (entry.isDirectory()) {
+                walk(full);
+            } else if (/^Singleton(Lock|Cookie|Socket)$/.test(entry.name)) {
+                try { fs.rmSync(full, { force: true }); } catch (_) { /* ignore */ }
+            }
+        }
+    };
+    try { walk(SESSION_DIR); } catch (_) { /* ignore */ }
+};
 
 /**
  * Normaliza un teléfono argentino al formato internacional aceptado por WhatsApp:
@@ -203,10 +264,8 @@ export const initWhatsApp = async ({ force = false, wipeSession = false } = {}) 
     }
     if (force && wipeSession) {
         try {
-            if (fs.existsSync(SESSION_DIR)) {
-                fs.rmSync(SESSION_DIR, { recursive: true, force: true });
-                logger.info('[whatsappService] wa-session/ eliminada por wipeSession=true');
-            }
+            wipeSessionContents();
+            logger.info('[whatsappService] wa-session/ contenido eliminado por wipeSession=true');
         } catch (err) {
             logger.warn(`[whatsappService] no pude borrar wa-session: ${err?.message || err}`);
         }
@@ -221,6 +280,11 @@ export const initWhatsApp = async ({ force = false, wipeSession = false } = {}) 
             return null;
         }
     }
+
+    // Limpiar locks de Chromium zombie antes de iniciar — sin esto, si el
+    // último Chromium murió sin limpiar, el nuevo falla con Code 21
+    // "profile appears to be in use".
+    clearChromiumLocks();
 
     whatsappClient = createClient();
     attachListeners(whatsappClient);
@@ -280,10 +344,8 @@ export const destroyWhatsApp = async ({ wipeSession = false } = {}) => {
 
     if (wipeSession) {
         try {
-            if (fs.existsSync(SESSION_DIR)) {
-                fs.rmSync(SESSION_DIR, { recursive: true, force: true });
-                logger.info('[whatsappService] wa-session/ eliminada');
-            }
+            wipeSessionContents();
+            logger.info('[whatsappService] wa-session/ contenido eliminado');
         } catch (err) {
             logger.error(`[whatsappService] no pude borrar wa-session: ${err.message}`);
         }
