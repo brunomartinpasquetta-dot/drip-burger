@@ -1,50 +1,60 @@
 // -----------------------------------------------------------------------------
-// Zonificador V2 para Coronda — adaptado del shippingZoneV2 de Sinatra.
+// Zonificador V2 (portado de Sinatra) — paridad con el flujo OlaClick.
 //
-// Cascada de geocoding:
-//   1) Nominatim (OSM) — viewbox/bbox de Coronda + bounded=1.
-//   2) Georef (apis.datos.gob.ar) — fallback oficial AR, dpto San Jerónimo.
+// Cascada VALIDADA por zona (no sólo por bbox):
+//   1) Nominatim — params idénticos al standalone (viewbox Coronda + bounded=1
+//      + countrycodes=ar + accept-language=es). Es el único geocoder que el
+//      standalone usa, por eso va primero.
+//   2) Georef (apis.datos.gob.ar) — fallback oficial AR. Filtra por depto
+//      "San Jerónimo" + localidad Coronda + bbox para descartar homónimas.
 //   3) Photon (komoot) — último recurso fuzzy sobre OSM.
 //
 // Para CADA provider que devuelve un punto en bbox: corremos point-in-polygon
-// contra el polígono de zona centro. Si está adentro → 'centro'. Si quedó
-// dentro del bbox de Coronda pero fuera del polígono → 'alejada'. Si nunca
-// resolvió coords → null.
+// contra las features de `zonasDelivery` (loaded from PB). Si cae en zona →
+// devolvemos. Si no → guardamos como candidato y seguimos al próximo provider
+// (porque otro geocoder puede devolver coords distintas para la misma calle
+// que sí caigan en zona).
 //
-// Las TARIFAS siguen viniendo de `settings` (precio_envio_centro /
-// precio_envio_alejado) — el zonificador sólo decide en qué zona cae la
-// dirección. Esto mantiene el panel admin tal cual y permite cambiar
-// tarifas sin tocar código.
+// Cache persistente en localStorage (sólo zone-matches). Bump CACHE_KEY a
+// v5 para invalidar entries stale del modo viejo (centro/alejada).
 //
-// Cache persistente en localStorage. Bump CACHE_KEY para invalidar entries
-// stale si cambia el polígono o la lógica.
+// Modos de cálculo (controlados desde settings via localCenterLoader):
+//   - 'zonas'     -> point-in-polygon contra features
+//   - 'distancia' -> base + km × porKm, cutoff maxKm
+//   - 'fijo'     -> precio fijo (envio_base)
 // -----------------------------------------------------------------------------
 
-import zonaCentroGeoJson from './zona-centro-coronda.json';
+import { getZonas } from './zonasLoader';
+import { getLocalCenter, getShippingConfig } from './localCenterLoader';
+
+// Distancia Haversine (km) entre dos coords (lat,lng).
+const haversineKm = (a, b) => {
+	const R = 6371; // radio Tierra en km
+	const toRad = (x) => (x * Math.PI) / 180;
+	const dLat = toRad(b.lat - a.lat);
+	const dLng = toRad(b.lng - a.lng);
+	const s1 = Math.sin(dLat / 2);
+	const s2 = Math.sin(dLng / 2);
+	const c = s1 * s1 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * s2 * s2;
+	return 2 * R * Math.asin(Math.sqrt(c));
+};
 
 const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
 const GEOREF_URL = 'https://apis.datos.gob.ar/georef/api/direcciones';
 const PHOTON_URL = 'https://photon.komoot.io/api';
 
-// Viewbox EXACTO del standalone zonificador-coronda-v4.html (const BBOX).
-// Sólo afecta a Nominatim: paridad 1:1 con el HTML que el negocio usó para
-// dibujar el polígono — cualquier desvío hace que Nominatim devuelva coords
-// distintas para las direcciones del casco céntrico. NO aproximar este valor.
+// Viewbox EXACTO del standalone zonificador-coronda-v4.html. Paridad 1:1 con
+// el HTML que el negocio usó para dibujar el polígono — cualquier desvío hace
+// que Nominatim devuelva coords distintas. NO aproximar este valor.
 // Formato Nominatim viewbox: minLng,maxLat,maxLng,minLat
 const NOMINATIM_VIEWBOX = '-60.95,-31.94,-60.88,-32.00';
 
-// bbox AMPLIO para el post-filter de Georef/Photon (esos NO usan viewbox).
-// Cubre todo el ejido de Coronda + zona rural cercana, así una dirección
-// real pero a las afueras del centro (que Nominatim no devuelve por
-// bounded=1) sí la captura Georef/Photon → cae fuera del polígono CENTRO
-// → se clasifica como 'alejada' (deliverable, tarifa alejada) en vez de
-// rebotar como notFound. Lo que queda FUERA de este bbox sí es notFound
-// (otra ciudad → no entregamos ahí).
+// bbox AMPLIO para el post-filter (Georef/Photon no usan viewbox). Cubre todo
+// el ejido de Coronda + zona rural cercana. Lo que queda fuera = otra ciudad,
+// no entregamos ahí (notFound).
 const CORONDA_BBOX = { minLng: -61.00, minLat: -32.05, maxLng: -60.85, maxLat: -31.92 };
 
-// v4: bump tras separar viewbox (tight, para paridad Nominatim) de bbox
-// (amplio, para que Georef/Photon capturen las afueras como 'alejada').
-const CACHE_KEY = 'dripburger:geocode:v4';
+const CACHE_KEY = 'dripburger:geocode:v5';
 const memCache = new Map();
 
 const loadCache = () => {
@@ -111,7 +121,7 @@ const tryNominatim = async (raw) => {
 	return { lat, lng, source: 'nominatim', display: data[0].display_name || '' };
 };
 
-// ── Provider 2: Georef AR (filtra por dpto San Jerónimo) ────────────────
+// ── Provider 2: Georef AR (filtra por dpto San Jerónimo / localidad Coronda) ──
 const georefSearch = async (raw, extra = {}) => {
 	const params = new URLSearchParams({
 		direccion: raw,
@@ -130,7 +140,7 @@ const georefSearch = async (raw, extra = {}) => {
 };
 
 const tryGeoref = async (raw) => {
-	// Búsqueda 1: provincia=santa fe, ranking por dpto San Jerónimo o localidad Coronda.
+	// Búsqueda 1: provincia=santa fe, ranking por dpto San Jerónimo / localidad Coronda.
 	let list = await georefSearch(raw);
 	let pick = list.find(
 		(r) => inBbox(r.lat, r.lng) && /san jeronimo|coronda/i.test(`${r.depto} ${r.localidad}`)
@@ -171,13 +181,6 @@ const PROVIDERS = [
 	{ name: 'photon', fn: tryPhoton },
 ];
 
-// NOTA: NO hay fallback por nombre de calle. Se intentó (commit 86b0d03) pero
-// ignoraba la altura → "España 3000" (altura inexistente) caía como centro.
-// El standalone tampoco tiene fallback: si Nominatim no encuentra la
-// dirección, es "no encontrada". Con el viewbox correcto (paridad con el
-// HTML) Nominatim resuelve bien las direcciones reales de Coronda; si no la
-// encuentra, probablemente no existe → fuera de cobertura, bloquea el submit.
-
 // ── Point in polygon (ray-casting). polygon = [[lng,lat],...]. ───────────
 const pointInPolygon = (point, polygon) => {
 	const x = point.lng;
@@ -193,30 +196,127 @@ const pointInPolygon = (point, polygon) => {
 	return inside;
 };
 
-const isInCentro = (point) => {
-	for (const feature of zonaCentroGeoJson.features) {
-		const ring = feature?.geometry?.coordinates?.[0];
-		if (Array.isArray(ring) && pointInPolygon(point, ring)) return true;
+// Construye un "feature" sintético para los modos sin polígonos (distancia
+// / fijo). Compatible con buildZoneResult: necesita .properties con id,
+// nombre, tarifa, color.
+const makeSyntheticFeature = ({ id, nombre, tarifa, color = '#F5A800' }) => ({
+	type: 'Feature',
+	geometry: null,
+	properties: { id, nombre, tarifa, color, tipo: 'sintetico' },
+});
+
+const findZone = (point) => {
+	// Decide el modo de envío según settings (cargado por localCenterLoader).
+	//   'distancia' -> precio_envio = base + km × porKm, cutoff maxKm.
+	//   'fijo'      -> precio_envio = base, sin cutoff.
+	//   'zonas'     -> features de zonas_delivery (círculos prioridad, luego
+	//                  polígonos). Default si no hay config.
+	const shipping = getShippingConfig();
+	const center = getLocalCenter();
+
+	// --- Modo DISTANCIA RECORRIDA (OlaClick "Distancia recorrida") ---
+	if (shipping.modo === 'distancia' && Number.isFinite(center.lat) && Number.isFinite(center.lng)) {
+		const dist = haversineKm(center, point);
+		const maxKm = Number(shipping.maxKm) || 0;
+		if (maxKm > 0 && dist > maxKm) return null; // fuera de cobertura
+		const base = Number(shipping.base) || 0;
+		const porKm = Number(shipping.porKm) || 0;
+		const tarifa = Math.round(base + dist * porKm);
+		return makeSyntheticFeature({
+			id: 'DIST',
+			nombre: `${dist.toFixed(1)} km`,
+			tarifa,
+		});
 	}
-	return false;
+
+	// --- Modo PRECIO FIJO ---
+	if (shipping.modo === 'fijo') {
+		const tarifa = Number(shipping.base) || 0;
+		return makeSyntheticFeature({
+			id: 'FIJO',
+			nombre: 'Envío',
+			tarifa,
+		});
+	}
+
+	// --- Modo ZONAS (default) ---
+	const zonas = getZonas();
+	const features = Array.isArray(zonas.features) ? zonas.features : [];
+
+	// Círculos primero (modelo "Rangos personalizados" de OlaClick).
+	const circulos = features
+		.filter((f) => f.properties.tipo === 'circulo' && Number(f.properties.radioKm) > 0)
+		.sort((a, b) => Number(a.properties.radioKm) - Number(b.properties.radioKm));
+	if (circulos.length > 0 && Number.isFinite(center.lat) && Number.isFinite(center.lng)) {
+		const dist = haversineKm(center, point);
+		for (const f of circulos) {
+			if (dist <= Number(f.properties.radioKm)) return f;
+		}
+		// Fuera del último radio = fuera de zona (no cae a polígonos).
+		return null;
+	}
+
+	// Polígonos como fallback / coexistencia.
+	for (const feature of features) {
+		if (feature.properties.tipo === 'circulo') continue;
+		const ring = feature?.geometry?.coordinates?.[0];
+		if (Array.isArray(ring) && pointInPolygon(point, ring)) {
+			return feature;
+		}
+	}
+	return null;
 };
+
+const buildZoneResult = (feature, point, source) => ({
+	zonaId: feature.properties.id,
+	zonaNombre: feature.properties.nombre,
+	tarifa: Number(feature.properties.tarifa) || 0,
+	color: feature.properties.color || '#F5A800',
+	lat: point.lat,
+	lng: point.lng,
+	source,
+});
+
+const buildOutOfZoneResult = (point, source) => ({
+	zonaId: null,
+	zonaNombre: 'Fuera de zona',
+	tarifa: null,
+	color: '#ef4444',
+	lat: point.lat,
+	lng: point.lng,
+	source,
+});
 
 // ── API pública ──────────────────────────────────────────────────────────
 
 /**
- * Determina la zona de envío de una dirección libre.
+ * Geocodifica una dirección. Cascada simple: primer provider que devuelve
+ * punto en bbox gana. Sin validación contra zonas (eso lo hace
+ * determinarZonaV2). Mantiene la firma legacy {lat, lng}.
+ */
+export const geocodeAddress = async (direccion) => {
+	const text = String(direccion || '').trim();
+	if (!text) return null;
+	for (const { name, fn } of PROVIDERS) {
+		const p = await fn(text);
+		if (p) {
+			log('geocodeAddress resuelto por', name, p);
+			return { lat: p.lat, lng: p.lng };
+		}
+	}
+	return null;
+};
+
+/**
+ * Determina zona de envío validando contra polígonos en cada provider.
+ * Si un provider devuelve coords pero quedan fuera de toda zona, guarda
+ * el candidato y prueba el siguiente provider — otro geocoder puede dar
+ * coords distintas para la misma calle que sí caigan en zona.
  *
- * @returns {Promise<{
- *   zona: 'centro' | 'alejada',
- *   lat: number,
- *   lng: number,
- *   source: 'nominatim' | 'georef' | 'photon',
- *   display: string
- * } | { zona: null, notFound: true } | null>}
- *   - {zona, lat, lng, source, display} si geocodificó y cayó en Coronda.
- *   - {zona: null, notFound: true} si NINGÚN provider devolvió un punto en
- *     el bbox de Coronda → la dirección está fuera del área de cobertura.
- *   - null si la entrada está vacía.
+ * @returns { zonaId, zonaNombre, tarifa, color, lat, lng, source } si zona
+ *          { zonaId: null, zonaNombre: 'Fuera de zona', ... } si geocodificó
+ *            pero ningún provider cayó en zona
+ *          null si ningún provider devolvió coords válidas
  */
 export const determinarZonaV2 = async (direccion) => {
 	const text = String(direccion || '').trim();
@@ -230,6 +330,7 @@ export const determinarZonaV2 = async (direccion) => {
 	}
 
 	log('cascada para:', text);
+	let lastCandidate = null;
 	for (const { name, fn } of PROVIDERS) {
 		const p = await fn(text);
 		if (!p) {
@@ -237,21 +338,34 @@ export const determinarZonaV2 = async (direccion) => {
 			continue;
 		}
 		log('  ', name, '→', p);
-		const zona = isInCentro(p) ? 'centro' : 'alejada';
-		const result = { zona, lat: p.lat, lng: p.lng, source: name, display: p.display };
-		log('  → zona', zona);
-		cache.set(key, result);
-		persistCache();
-		return result;
+		const zone = findZone(p);
+		if (zone) {
+			const result = buildZoneResult(zone, p, name);
+			log('  ZONA', zone.properties.id, '— cache HIT, salimos');
+			cache.set(key, result);
+			persistCache();
+			return result;
+		}
+		log('  ', name, 'fuera de toda zona, sigo con próximo provider');
+		if (!lastCandidate) lastCandidate = p;
 	}
 
-	log('ningún provider resolvió la dirección — fuera de cobertura');
-	// NO cacheamos notFound: puede ser falso negativo transitorio (provider
-	// caído, rate limit). Reintentar la próxima vez sale barato.
-	return { zona: null, notFound: true };
+	if (lastCandidate) {
+		log('ningún provider cayó en zona — devuelvo Fuera de zona con coords del primer candidato');
+		// NO cacheamos fuera-de-zona: puede ser falso negativo de un provider
+		// transitorio o bbox marginal. Reintentar la próxima vez sale barato.
+		return buildOutOfZoneResult(lastCandidate, lastCandidate.source);
+	}
+	log('ningún provider resolvió la dirección');
+	return null;
 };
 
-/** Compat con el shippingZone.js viejo (parser local). Sólo lo dejamos
- *  exportado por si algún módulo lo importa todavía — devuelve 'alejada'
- *  por default si no se llamó al async V2 antes. */
+export const zonasDisponibles = () => getZonas().features.map((f) => ({
+	id: f.properties.id,
+	nombre: f.properties.nombre,
+	tarifa: f.properties.tarifa,
+	color: f.properties.color,
+}));
+
+/** Compat con shippingZone.js viejo. Devuelve 'alejada' por default. */
 export const determinarZona = () => 'alejada';

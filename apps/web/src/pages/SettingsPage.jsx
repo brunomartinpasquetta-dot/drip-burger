@@ -1337,6 +1337,20 @@ const MercadoPagoCard = () => {
 export const SettingsContent = () => {
   return (
     <div className="space-y-4">
+      {/* Acceso al admin de Zonas/Modo de envío (modo zonas|distancia|fijo,
+          círculos/polígonos, ubicación del local). Página dedicada porque
+          incluye mapa Leaflet + edición geométrica con geoman. */}
+      <div className="bg-card border border-border rounded-xl p-3 flex items-center justify-between gap-3 flex-wrap">
+        <div className="min-w-0">
+          <p className="text-[11px] font-black uppercase tracking-widest text-foreground">Zonas de envío</p>
+          <p className="text-[10px] text-muted-foreground font-medium mt-0.5">
+            Configurá el modo (zonas, distancia o precio fijo), las tarifas y la ubicación del local.
+          </p>
+        </div>
+        <Button asChild size="sm" className="btn-primary h-8 px-3 text-[11px] font-black uppercase tracking-wide">
+          <Link to="/gestion/zonas">Configurar zonas</Link>
+        </Button>
+      </div>
       <OperacionCard />
       <TransferenciaCard />
       <PrinterCard />

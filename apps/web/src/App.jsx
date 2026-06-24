@@ -15,7 +15,7 @@ import AdminDashboard from './pages/AdminDashboard.jsx';
 import SalesReportingPage from './pages/SalesReportingPage.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
 import EditOrdersPage from './pages/EditOrdersPage.jsx';
-import BannersAdminPage from './pages/BannersAdminPage.jsx';
+import ZonasAdmin from './pages/admin/ZonasAdmin.jsx';
 import { PaymentSuccessPage, PaymentFailedPage, PaymentPendingPage } from './pages/PaymentReturnPages.jsx';
 import { Toaster } from '@/components/ui/sonner';
 
@@ -27,6 +27,11 @@ function App() {
     if (hasSeenSplash) {
       setShowSplash(false);
     }
+    // Pre-cargar zonas + centro/config del local al boot. Si fallan
+    // (PB no responde, network), el zonificador cae al fallback JSON
+    // bundleado y a las coords default — no rompe el checkout.
+    import('@/lib/zonasLoader').then((m) => m.loadZonas()).catch(() => {});
+    import('@/lib/localCenterLoader').then((m) => m.loadLocalCenter()).catch(() => {});
   }, []);
 
   const handleSplashComplete = () => {
@@ -87,16 +92,16 @@ function App() {
                 </AdminRoute>
               }
             />
-            {/* Alias legacy — redirige al nuevo path */}
-            <Route path="/gestion/configuracion" element={<Navigate to="/gestion/config" replace />} />
             <Route
-              path="/gestion/banners"
+              path="/gestion/zonas"
               element={
                 <AdminRoute>
-                  <BannersAdminPage />
+                  <ZonasAdmin />
                 </AdminRoute>
               }
             />
+            {/* Alias legacy — redirige al nuevo path */}
+            <Route path="/gestion/configuracion" element={<Navigate to="/gestion/config" replace />} />
 
             {/* Fallback */}
             <Route path="*" element={<Navigate to="/" replace />} />

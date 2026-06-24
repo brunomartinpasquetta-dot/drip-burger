@@ -10,6 +10,7 @@ import pb from '@/lib/pocketbaseClient';
 import apiServerClient from '@/lib/apiServerClient';
 import { cn } from '@/lib/utils.js';
 import Header from '@/components/Header.jsx';
+import AddressAutocomplete from '@/components/AddressAutocomplete.jsx';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -144,6 +145,11 @@ const CartPage = () => {
   const {
     shippingPrice: shippingPriceRaw,
     zona,
+    zonaNombre,
+    zonaColor,
+    lat: zoneLat,
+    lng: zoneLng,
+    outOfZone: shippingOutOfZone,
     precios,
     loading: shippingLoading,
     notFound: shippingNotFound,
@@ -164,9 +170,9 @@ const CartPage = () => {
   const timeSlots = ['20:30', '21:00', '21:30', '22:00', '22:30', '23:00'];
 
   // Cierre anticipado: un slot deja de estar disponible para nuevos pedidos
-  // 6 min antes de su horario (ej: 20:30 cierra a las 20:24). Reduce el riesgo
+  // 10 min antes de su horario (ej: 20:30 cierra a las 20:20). Reduce el riesgo
   // de pedidos last-second que la cocina no llega a preparar.
-  const SLOT_CUTOFF_MINUTES = 6;
+  const SLOT_CUTOFF_MINUTES = 10;
 
   // Tick para forzar re-render cada 30s y refrescar los chequeos de "cerrado".
   // Sin esto, si el cliente abre la pantalla 5 min antes del slot, no vería
@@ -177,7 +183,7 @@ const CartPage = () => {
     return () => clearInterval(id);
   }, []);
 
-  // Devuelve true si ya pasamos el horario - 6 min. Comparación contra hora
+  // Devuelve true si ya pasamos el horario - 10 min. Comparación contra hora
   // local del navegador del cliente (todo el flow opera en AR, navegador en
   // AR — no necesitamos timezone-aware aquí).
   const isSlotClosed = (slot) => {
@@ -316,9 +322,9 @@ const CartPage = () => {
       return;
     }
 
-    // Pre-flight: slot no debe estar cerrado por cutoff de 6 min
+    // Pre-flight: slot no debe estar cerrado por cutoff de 10 min
     if (isSlotClosed(formData.horario_reparto)) {
-      toast.error('Ese horario ya cerró (cierra 6 minutos antes), elegí otro');
+      toast.error('Ese horario ya cerró (cierra 10 minutos antes), elegí otro');
       setFormData(prev => ({ ...prev, horario_reparto: '' }));
       return;
     }
@@ -380,6 +386,10 @@ const CartPage = () => {
           price: item.price
         })),
         precio_envio_snapshot: shippingPrice,
+        // Coords geocoded — usamos para el link de Google Maps en el ticket
+        // del delivery. Take-away no lleva coords (no hay reparto).
+        lat: formData.takeAway ? null : (Number.isFinite(zoneLat) ? zoneLat : null),
+        lng: formData.takeAway ? null : (Number.isFinite(zoneLng) ? zoneLng : null),
         totalAmount: totalAmount,
         horario_reparto: formData.horario_reparto,
         deliveryTimeSlot: formData.horario_reparto,
@@ -752,17 +762,13 @@ const CartPage = () => {
                 {!formData.takeAway && (
                   <div className="space-y-2">
                     <Label htmlFor="direccion" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Dirección de Entrega</Label>
-                    <Input
-                      id="direccion"
+                    <AddressAutocomplete
                       value={formData.direccion}
-                      onChange={(e) => setFormData({ ...formData, direccion: e.target.value })}
+                      onChange={(v) => setFormData({ ...formData, direccion: v })}
                       placeholder="Ej: San Martín 1550"
-                      className={cn(
-                        "bg-background border-border text-foreground focus-visible:ring-1",
-                        errors.direccion && "border-destructive bg-destructive/10 focus-visible:ring-destructive"
-                      )}
+                      error={!!errors.direccion}
                     />
-                    {/* Estado del geocoding: cargando, fuera de cobertura, o zona resuelta */}
+                    {/* Estado del geocoding: cargando, fuera de cobertura, zona/distancia/fijo resuelto */}
                     {formData.direccion.trim() && shippingLoading && (
                       <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground px-2.5 py-1.5">
                         Verificando dirección...
@@ -771,21 +777,27 @@ const CartPage = () => {
                     {formData.direccion.trim() && !shippingLoading && shippingNotFound && (
                       <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-wider px-2.5 py-1.5 rounded border text-red-400 border-red-500/40 bg-red-500/10">
                         <span className="text-[8px]">●</span>
-                        <span>Dirección fuera del área de envío de Coronda. Revisá calle y número.</span>
+                        <span>Dirección no encontrada. Revisá calle y número o usá 📍 Mi ubicación.</span>
+                      </div>
+                    )}
+                    {formData.direccion.trim() && !shippingLoading && shippingOutOfZone && (
+                      <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-wider px-2.5 py-1.5 rounded border text-red-400 border-red-500/40 bg-red-500/10">
+                        <span className="text-[8px]">●</span>
+                        <span>Fuera del área de envío. Probá una dirección más cercana al local.</span>
                       </div>
                     )}
                     {formData.direccion.trim() && !shippingLoading && zona && (
                       <div
-                        className={cn(
-                          "flex items-center justify-between gap-2 text-[11px] font-black uppercase tracking-wider px-2.5 py-1.5 rounded border",
-                          zona === 'centro'
-                            ? "text-green-400 border-green-500/40 bg-green-500/10"
-                            : "text-orange-400 border-orange-500/40 bg-orange-500/10"
-                        )}
+                        className="flex items-center justify-between gap-2 text-[11px] font-black uppercase tracking-wider px-2.5 py-1.5 rounded border"
+                        style={{
+                          color: zonaColor || '#10b981',
+                          borderColor: (zonaColor || '#10b981') + '66',
+                          backgroundColor: (zonaColor || '#10b981') + '1a',
+                        }}
                       >
                         <span className="flex items-center gap-1.5">
                           <span className="text-[8px]">●</span>
-                          {zona === 'centro' ? 'Zona centro' : 'Zona alejada'}
+                          {zonaNombre || (zona === 'centro' ? 'Zona centro' : 'Zona alejada')}
                         </span>
                         <span className="tabular-nums">
                           {shippingPrice === 0 ? 'Envío gratis' : `Envío ${formatPrice(shippingPrice)}`}
@@ -831,39 +843,51 @@ const CartPage = () => {
                       )}
                     >
                       <option value="" disabled>Seleccioná un horario</option>
-                      {timeSlots.map((slot) => {
+                      {(() => {
                         // slotTick fuerza el recompute cuando pasa el cutoff
-                        // de los 6 min sin que el cliente toque nada.
+                        // de los 10 min sin que el cliente toque nada.
                         void slotTick;
-                        const closed = isSlotClosed(slot);
-                        const info = getSlotInfo(slot);
-                        const full = info?.full === true;
-                        const available = info?.available ?? null;
-                        const insufficient =
-                          !closed &&
-                          !full &&
-                          available !== null &&
-                          cartMedallions > 0 &&
-                          available < cartMedallions;
-                        const almostFull =
-                          !closed &&
-                          !full &&
-                          !insufficient &&
-                          available !== null &&
-                          available > 0 &&
-                          available <= 3;
-                        const disabled = closed || full || insufficient;
-                        let suffix = '';
-                        if (closed) suffix = ' · CERRADO';
-                        else if (full) suffix = ' · SIN LUGAR';
-                        else if (insufficient) suffix = ` · SOLO QUEDAN ${available} MEDALLONES`;
-                        else if (almostFull) suffix = ` · ÚLTIMOS ${available} MEDALLONES`;
-                        return (
-                          <option key={slot} value={slot} disabled={disabled}>
-                            {slot}{suffix}
-                          </option>
-                        );
-                      })}
+                        // Filtramos los slots NO disponibles antes de renderizar.
+                        // Antes mostrábamos los cerrados/llenos disabled con sufijo
+                        // "· CERRADO" — los clientes leían eso como "el local no
+                        // toma pedidos a esta hora" y se iban. Mejor mostrarles
+                        // solo los slots que SÍ pueden elegir.
+                        const visibleSlots = timeSlots
+                          .map((slot) => {
+                            const closed = isSlotClosed(slot);
+                            const info = getSlotInfo(slot);
+                            const full = info?.full === true;
+                            const available = info?.available ?? null;
+                            const insufficient =
+                              !closed &&
+                              !full &&
+                              available !== null &&
+                              cartMedallions > 0 &&
+                              available < cartMedallions;
+                            const almostFull =
+                              !closed &&
+                              !full &&
+                              !insufficient &&
+                              available !== null &&
+                              available > 0 &&
+                              available <= 3;
+                            return { slot, closed, full, insufficient, almostFull, available };
+                          })
+                          .filter((s) => !s.closed && !s.full && !s.insufficient);
+                        if (visibleSlots.length === 0) {
+                          return (
+                            <option value="" disabled>Sin horarios disponibles ahora</option>
+                          );
+                        }
+                        return visibleSlots.map(({ slot, almostFull, available }) => {
+                          const suffix = almostFull ? ` · ÚLTIMOS ${available} MEDALLONES` : '';
+                          return (
+                            <option key={slot} value={slot}>
+                              {slot}{suffix}
+                            </option>
+                          );
+                        });
+                      })()}
                     </select>
                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
                   </div>
