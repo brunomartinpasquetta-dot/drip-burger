@@ -6,6 +6,7 @@ import pb from '@/lib/pocketbaseClient';
 import Header from '@/components/Header.jsx';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -85,7 +86,6 @@ const OperacionCard = () => {
   const [precioEnvioAlejado, setPrecioEnvioAlejado] = useState(0);
   const [horaApertura, setHoraApertura] = useState('');
   const [horaCierre, setHoraCierre] = useState('');
-  const [maxMedallionsPerSlot, setMaxMedallionsPerSlot] = useState(DEFAULT_MAX_MEDALLIONS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [, forceTick] = useState(0);
@@ -111,10 +111,6 @@ const OperacionCard = () => {
           );
           setHoraApertura(rec.hora_apertura || '');
           setHoraCierre(rec.hora_cierre || '');
-          const savedMax = Number(rec.maxMedallionsPerSlot);
-          setMaxMedallionsPerSlot(
-            Number.isFinite(savedMax) && savedMax > 0 ? savedMax : DEFAULT_MAX_MEDALLIONS
-          );
         }
       } catch (err) {
         console.error('[OperacionCard] load failed:', err);
@@ -141,7 +137,6 @@ const OperacionCard = () => {
     }
     setSaving(true);
     try {
-      const cleanMax = Math.max(0, Math.floor(Number(maxMedallionsPerSlot) || 0));
       const centroNum = Math.max(0, Number(precioEnvioCentro) || 0);
       const alejadoNum = Math.max(0, Number(precioEnvioAlejado) || 0);
       const data = {
@@ -150,7 +145,6 @@ const OperacionCard = () => {
         precio_envio_alejado: alejadoNum,
         hora_apertura: horaApertura,
         hora_cierre: horaCierre,
-        maxMedallionsPerSlot: cleanMax,
       };
       let updated;
       if (settingsId) {
@@ -291,34 +285,6 @@ const OperacionCard = () => {
         </p>
       </div>
 
-      {/* Sección: Capacidad de producción por tanda */}
-      <div className="px-4 py-3 border-t border-border">
-        <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-2">
-          <Clock className="inline w-3 h-3 mr-1 -mt-0.5" />
-          Capacidad de producción por tanda
-        </p>
-        <div className="max-w-sm space-y-1">
-          <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground block">
-            Máximo de medallones
-          </label>
-          <div className="flex items-center gap-2">
-            <Input
-              type="number"
-              min="0"
-              max="500"
-              step="1"
-              value={maxMedallionsPerSlot}
-              onChange={(e) => setMaxMedallionsPerSlot(e.target.value)}
-              className="bg-background border-border text-foreground h-10 text-sm font-black tabular-nums w-32"
-            />
-            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wide">medallones</span>
-          </div>
-        </div>
-        <p className="text-[10px] text-muted-foreground font-medium mt-2">
-          Máximo de medallones que podés preparar en cada horario. Los productos sin medallones no cuentan.
-        </p>
-      </div>
-
       {/* Row: Guardar */}
       <div className="px-4 py-3 border-t border-border">
         <Button
@@ -330,6 +296,108 @@ const OperacionCard = () => {
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Save className="mr-1 h-4 w-4" />Guardar cambios</>}
         </Button>
       </div>
+    </div>
+  );
+};
+
+// ══════════════════════════════════════════════════════════════════
+//  Capacidad por turno — cap de medallones individual para cada
+//  horario de envío. No hay global: cada slot tiene su propio máximo.
+//  Si un slot queda en 0 explícitamente, ese horario queda bloqueado.
+// ══════════════════════════════════════════════════════════════════
+const SLOT_ORDER = ['20:30', '21:00', '21:30', '22:00', '22:30', '23:00'];
+const DEFAULT_PER_SLOT = 20;
+
+const CapacidadPorTurnoCard = () => {
+  const [settingsId, setSettingsId] = useState(null);
+  const [perSlot, setPerSlot] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const recs = await pb.collection('settings').getList(1, 1, { requestKey: null });
+        if (!mounted) return;
+        if (recs.items.length > 0) {
+          const r = recs.items[0];
+          setSettingsId(r.id);
+          const ps = r.slotCapacityPerSlot;
+          const init = {};
+          for (const slot of SLOT_ORDER) {
+            const v = Number(ps && ps[slot]);
+            init[slot] = Number.isFinite(v) && v >= 0 ? v : DEFAULT_PER_SLOT;
+          }
+          setPerSlot(init);
+        }
+      } catch (err) {
+        console.error('[CapacidadPorTurnoCard] load failed:', err);
+        toast.error('No pude cargar la capacidad por turno');
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  const handleSave = async () => {
+    if (!settingsId) return;
+    setSaving(true);
+    try {
+      // Sanitizar: cast a Number, clamp >= 0.
+      const payload = {};
+      for (const slot of SLOT_ORDER) {
+        const v = Number(perSlot[slot]);
+        payload[slot] = Number.isFinite(v) && v >= 0 ? v : 0;
+      }
+      await pb.collection('settings').update(settingsId, {
+        slotCapacityPerSlot: payload,
+      }, { requestKey: null });
+      toast.success('Capacidad por turno guardada');
+    } catch (err) {
+      console.error('[CapacidadPorTurnoCard] save failed:', err);
+      toast.error('Error al guardar');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="bg-card border border-border rounded-xl p-3 space-y-2">
+        <Skeleton className="h-4 w-1/3" />
+        <Skeleton className="h-9 w-full" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-card border border-border rounded-xl p-3 space-y-3">
+      <div>
+        <p className="text-[11px] font-black uppercase tracking-widest text-foreground">Capacidad por turno</p>
+        <p className="text-[10px] text-muted-foreground font-medium mt-0.5">
+          Medallones máximos por cada horario de envío. Cuando un turno llega al límite, deja de aceptar pedidos para ese horario hasta que pase. 0 = bloqueado.
+        </p>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        {SLOT_ORDER.map((slot) => (
+          <div key={slot} className="space-y-1">
+            <Label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">{slot}</Label>
+            <Input
+              type="number"
+              min="0"
+              step="1"
+              value={perSlot[slot] ?? ''}
+              onChange={(e) => setPerSlot((p) => ({ ...p, [slot]: e.target.value }))}
+              className="bg-background border-border h-9 text-xs font-black tabular-nums"
+            />
+          </div>
+        ))}
+      </div>
+      <Button onClick={handleSave} disabled={saving} className="btn-primary w-full h-9 text-[11px] font-black uppercase tracking-wide">
+        {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><Save className="mr-1 h-3.5 w-3.5" />Guardar capacidad por turno</>}
+      </Button>
     </div>
   );
 };
@@ -1352,6 +1420,7 @@ export const SettingsContent = () => {
         </Button>
       </div>
       <OperacionCard />
+      <CapacidadPorTurnoCard />
       <TransferenciaCard />
       <PrinterCard />
       <div className="pt-2">

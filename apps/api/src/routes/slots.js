@@ -59,20 +59,26 @@ const countMedallions = (items) => {
  * Público (lo consume el CartPage del cliente).
  * Devuelve la capacidad global de medallones y el uso por cada tanda del día.
  */
+// Devuelve el max de medallones para un slot dado. Prioridad:
+//   1. slotCapacityPerSlot[slot] (config individual del admin)
+//   2. DEFAULT_MAX_MEDALLIONS si nada está configurado
+const resolveSlotMax = (perSlot, slot) => {
+    if (perSlot && typeof perSlot === 'object') {
+        const v = Number(perSlot[slot]);
+        if (Number.isFinite(v) && v >= 0) return v;
+    }
+    return DEFAULT_MAX_MEDALLIONS;
+};
+
 router.get('/availability', async (req, res) => {
     try {
-        // 1. Leer maxMedallionsPerSlot de settings
-        let maxMedallionsPerSlot = DEFAULT_MAX_MEDALLIONS;
+        // 1. Leer per-slot capacity de settings (sin global — cada slot es
+        //    independiente).
+        let slotCapacityPerSlot = null;
         try {
             const settings = await pb.collection('settings').getList(1, 1, { requestKey: null });
             if (settings.items.length > 0) {
-                const raw = settings.items[0].maxMedallionsPerSlot;
-                const n = Number(raw);
-                // Aceptar 0 legítimamente (admin bloquea el slot completo).
-                // Solo caer al default si el valor es null/undefined/NaN.
-                if (raw != null && !Number.isNaN(n) && n >= 0) {
-                    maxMedallionsPerSlot = n;
-                }
+                slotCapacityPerSlot = settings.items[0].slotCapacityPerSlot || null;
             }
         } catch (err) {
             logger.warn(`[slots/availability] cannot read settings, using default: ${err.message}`);
@@ -80,7 +86,15 @@ router.get('/availability', async (req, res) => {
 
         // 2. Leer orders del día
         const { startUtc, endUtc, dateAr } = todayRangeArgentina();
-        const filter = `created >= "${startUtc}" && created < "${endUtc}" && orderStatus != "Cancelado"`;
+        // Excluimos:
+        //   - Cancelados (obvio).
+        //   - paymentStatus = "Rechazado" (MP devolvió fail — no es reserva real).
+        //   - forma_pago = "Mercado Pago" con paymentStatus != "Pagado": son MP
+        //     abandonados (el cliente arrancó el flow online y nunca pagó). Sin
+        //     este filtro inflan la capacidad y bloquean clientes reales.
+        // Las órdenes Efectivo / Transferencia se cuentan SIEMPRE (aunque sigan
+        // Pendientes), porque son reservas reales que se cobran al delivery.
+        const filter = `created >= "${startUtc}" && created < "${endUtc}" && orderStatus != "Cancelado" && paymentStatus != "Rechazado" && (forma_pago != "Mercado Pago" || paymentStatus = "Pagado")`;
 
         let todayOrders = [];
         try {
@@ -104,18 +118,20 @@ router.get('/availability', async (req, res) => {
         // 4. Armar respuesta por slot (ordenada cronológicamente)
         const slots = SLOT_ORDER.map((slot) => {
             const usedMedallions = usedBySlot[slot] || 0;
-            const available = Math.max(0, maxMedallionsPerSlot - usedMedallions);
+            const slotMax = resolveSlotMax(slotCapacityPerSlot, slot);
+            const available = Math.max(0, slotMax - usedMedallions);
             return {
                 slot,
                 usedMedallions,
+                max: slotMax,
                 available,
-                full: usedMedallions >= maxMedallionsPerSlot,
+                full: usedMedallions >= slotMax,
             };
         });
 
         return res.json({
             date: dateAr,
-            maxMedallionsPerSlot,
+            slotCapacityPerSlot,
             slots,
         });
     } catch (err) {

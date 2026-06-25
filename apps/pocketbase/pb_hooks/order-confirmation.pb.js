@@ -82,11 +82,19 @@ onRecordCreate((e) => {
     let blockingError = null;
 
     try {
-      // 1. Leer maxMedallionsPerSlot de settings (default 20)
+      // 1. Leer cap del slot desde settings.slotCapacityPerSlot. Si no está
+      //    configurado para este slot, fallback al default 20. No hay más
+      //    config global — cada slot es independiente.
       const settingsRecords = $app.findRecordsByFilter("settings", `id != ""`, "", 1);
       const settings = settingsRecords && settingsRecords.length > 0 ? settingsRecords[0] : null;
-      const rawMax = settings ? settings.get("maxMedallionsPerSlot") : null;
-      const maxMedallions = rawMax != null ? Number(rawMax) : 20;
+      let maxMedallions = 20;
+      try {
+        const perSlot = settings ? settings.get("slotCapacityPerSlot") : null;
+        if (perSlot && typeof perSlot === "object") {
+          const v = Number(perSlot[slot]);
+          if (isFinite(v) && v >= 0) maxMedallions = v;
+        }
+      } catch (e) { /* usamos default 20 */ }
 
       // 2. Medallones del pedido entrante. Rechazar si hay valores negativos
       //    para evitar bypass de capacidad con pattyCount/quantity negativos.
@@ -102,7 +110,10 @@ onRecordCreate((e) => {
         // contra el formato de DB. Convertimos T→espacio para que match.
         const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString().replace("T", " ");
         const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).toISOString().replace("T", " ");
-        const filter = `deliveryTimeSlot = "${slot}" && created >= "${todayStart}" && created < "${todayEnd}" && orderStatus != "Cancelado"`;
+        // Excluimos cancelados, MP rechazados y MP abandonados (Pendiente sin pagar).
+        // Las órdenes Efectivo/Transferencia siguen contando aunque estén Pendientes
+        // (son reservas reales). Mismo criterio que /api/slots/availability.
+        const filter = `deliveryTimeSlot = "${slot}" && created >= "${todayStart}" && created < "${todayEnd}" && orderStatus != "Cancelado" && paymentStatus != "Rechazado" && (forma_pago != "Mercado Pago" || paymentStatus = "Pagado")`;
         const existing = $app.findRecordsByFilter("orders", filter, "", 1000);
 
         let usedMedallions = 0;
