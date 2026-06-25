@@ -30,6 +30,86 @@ const LOCAL_ICON = L.divIcon({
 
 const DEFAULT_CENTER = [-31.9731, -60.9205]; // Coronda — Juan de Garay 2189
 
+// Subcomponente para la fila editable de una zona circular. Mantiene STATE
+// LOCAL del nombre/radio/tarifa para que el input no quede congelado mientras
+// el parent debouncea el PB.update (sin esto el cursor "salta" en cada letra
+// porque el value vuelve a ser z.nombre hasta que loadZonas() rehidrata).
+const ZonaCirculoRow = ({ z, onUpdate, onDelete }) => {
+	const [nombre, setNombre] = useState(z.nombre || '');
+	const [radio, setRadio] = useState(String(z.radio_km || 0));
+	const [tarifa, setTarifa] = useState(String(z.tarifa || 0));
+
+	// Si la zona se rehidrata desde PB (ej. realtime sub trajo cambio
+	// externo), sincronizar local state — pero sólo si el campo no está
+	// siendo editado (heurística: si el valor local matchea o el remoto
+	// difiere significativamente). Para simplicidad sincronizamos siempre,
+	// el debounce evita race conditions porque el último save gana.
+	useEffect(() => { setNombre(z.nombre || ''); }, [z.nombre]);
+	useEffect(() => { setRadio(String(z.radio_km || 0)); }, [z.radio_km]);
+	useEffect(() => { setTarifa(String(z.tarifa || 0)); }, [z.tarifa]);
+
+	return (
+		<div className="px-3 py-2 space-y-1 text-xs">
+			<div className="flex items-center gap-2">
+				<input
+					type="color"
+					value={z.color}
+					onChange={(e) => onUpdate(z, { color: e.target.value })}
+					className="w-6 h-6 rounded border border-border bg-background cursor-pointer"
+				/>
+				<Input
+					value={nombre}
+					onChange={(e) => {
+						const v = e.target.value.slice(0, 60);
+						setNombre(v);
+						onUpdate(z, { nombre: v });
+					}}
+					className="flex-1 bg-background border-border h-7 text-xs font-bold"
+				/>
+				<button
+					onClick={() => onUpdate(z, { activa: !z.activa })}
+					className="text-muted-foreground hover:text-foreground"
+					title={z.activa === false ? 'Activar' : 'Desactivar'}
+				>
+					{z.activa === false ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+				</button>
+				<button
+					onClick={() => onDelete(z)}
+					className="text-red-400 hover:text-red-500"
+					title="Eliminar zona"
+				>
+					<Trash2 className="w-3.5 h-3.5" />
+				</button>
+			</div>
+			<div className="flex items-center gap-2">
+				<span className="text-[10px] text-muted-foreground font-bold uppercase shrink-0 w-12">Hasta</span>
+				<Input
+					type="number"
+					min="0.1" step="0.1"
+					value={radio}
+					onChange={(e) => {
+						setRadio(e.target.value);
+						onUpdate(z, { radio_km: Math.max(0, Number(e.target.value) || 0) });
+					}}
+					className="w-20 bg-background border-border h-7 text-xs font-black tabular-nums"
+				/>
+				<span className="text-[10px] font-bold text-muted-foreground">km</span>
+				<span className="text-[10px] text-muted-foreground font-bold uppercase shrink-0 ml-2">$</span>
+				<Input
+					type="number"
+					min="0" step="100"
+					value={tarifa}
+					onChange={(e) => {
+						setTarifa(e.target.value);
+						onUpdate(z, { tarifa: Math.max(0, Number(e.target.value) || 0) });
+					}}
+					className="flex-1 bg-background border-border h-7 text-xs font-black tabular-nums"
+				/>
+			</div>
+		</div>
+	);
+};
+
 // ═════════════════════════════════════════════════════════════════
 // MODO OLACLICK — zonas por distancia (círculos)
 // ═════════════════════════════════════════════════════════════════
@@ -160,14 +240,30 @@ const ZonasPorDistancia = ({ zonas, onChanged }) => {
 		}
 	};
 
-	const handleUpdateZone = async (z, patch) => {
-		try {
-			await pb.collection('zonas_delivery').update(z.id, patch, { requestKey: null });
-			loadZonas();
-			onChanged?.();
-		} catch (err) {
-			toast.error('Error al actualizar');
-		}
+	// Patches pendientes por zona — se mergean y se mandan con debounce 400ms.
+	// Sin esto, cada keystroke en "nombre" disparaba un PB.update + loadZonas()
+	// → input lagueaba feo (cada letra esperaba round-trip al server).
+	const pendingPatchRef = useRef(new Map()); // zoneId -> patch acumulado
+	const debounceRef = useRef(new Map());     // zoneId -> timeoutId
+	const handleUpdateZone = (z, patch) => {
+		const id = z.id;
+		const merged = { ...(pendingPatchRef.current.get(id) || {}), ...patch };
+		pendingPatchRef.current.set(id, merged);
+		const prevTimer = debounceRef.current.get(id);
+		if (prevTimer) clearTimeout(prevTimer);
+		const timer = setTimeout(async () => {
+			const finalPatch = pendingPatchRef.current.get(id) || {};
+			pendingPatchRef.current.delete(id);
+			debounceRef.current.delete(id);
+			try {
+				await pb.collection('zonas_delivery').update(id, finalPatch, { requestKey: null });
+				loadZonas();
+				onChanged?.();
+			} catch (err) {
+				toast.error('Error al actualizar');
+			}
+		}, 400);
+		debounceRef.current.set(id, timer);
 	};
 
 	const handleDeleteZone = async (z) => {
@@ -248,54 +344,12 @@ const ZonasPorDistancia = ({ zonas, onChanged }) => {
 							</p>
 						)}
 						{circulos.map((z) => (
-							<div key={z.id} className="px-3 py-2 space-y-1 text-xs">
-								<div className="flex items-center gap-2">
-									<input
-										type="color"
-										value={z.color}
-										onChange={(e) => handleUpdateZone(z, { color: e.target.value })}
-										className="w-6 h-6 rounded border border-border bg-background cursor-pointer"
-									/>
-									<Input
-										value={z.nombre}
-										onChange={(e) => handleUpdateZone(z, { nombre: e.target.value.slice(0, 60) })}
-										className="flex-1 bg-background border-border h-7 text-xs font-bold"
-									/>
-									<button
-										onClick={() => handleUpdateZone(z, { activa: !z.activa })}
-										className="text-muted-foreground hover:text-foreground"
-										title={z.activa === false ? 'Activar' : 'Desactivar'}
-									>
-										{z.activa === false ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-									</button>
-									<button
-										onClick={() => handleDeleteZone(z)}
-										className="text-red-400 hover:text-red-500"
-										title="Eliminar zona"
-									>
-										<Trash2 className="w-3.5 h-3.5" />
-									</button>
-								</div>
-								<div className="flex items-center gap-2">
-									<span className="text-[10px] text-muted-foreground font-bold uppercase shrink-0 w-12">Hasta</span>
-									<Input
-										type="number"
-										min="0.1" step="0.1"
-										value={z.radio_km || 0}
-										onChange={(e) => handleUpdateZone(z, { radio_km: Math.max(0, Number(e.target.value) || 0) })}
-										className="w-20 bg-background border-border h-7 text-xs font-black tabular-nums"
-									/>
-									<span className="text-[10px] font-bold text-muted-foreground">km</span>
-									<span className="text-[10px] text-muted-foreground font-bold uppercase shrink-0 ml-2">$</span>
-									<Input
-										type="number"
-										min="0" step="100"
-										value={z.tarifa || 0}
-										onChange={(e) => handleUpdateZone(z, { tarifa: Math.max(0, Number(e.target.value) || 0) })}
-										className="flex-1 bg-background border-border h-7 text-xs font-black tabular-nums"
-									/>
-								</div>
-							</div>
+							<ZonaCirculoRow
+								key={z.id}
+								z={z}
+								onUpdate={handleUpdateZone}
+								onDelete={handleDeleteZone}
+							/>
 						))}
 					</div>
 				</div>

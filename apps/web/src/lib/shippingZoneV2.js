@@ -360,6 +360,24 @@ export const determinarZonaV2 = async (direccion) => {
 	return null;
 };
 
+/**
+ * Resuelve zona usando coords directas (lat,lng) sin pasar por el geocoder.
+ * Sirve cuando el cliente usó "Mi ubicación" — tenemos los coords exactos
+ * del browser y no queremos perder precisión re-geocodificando una dirección
+ * aproximada. Devuelve la misma shape que determinarZonaV2.
+ */
+export const determinarZonaDesdeCoords = ({ lat, lng }) => {
+	if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+	const p = { lat, lng, source: 'geolocation', display: '' };
+	if (!inBbox(lat, lng)) {
+		log('coords fuera del bbox de Coronda', p);
+		return buildOutOfZoneResult(p, 'geolocation');
+	}
+	const zone = findZone(p);
+	if (zone) return buildZoneResult(zone, p, 'geolocation');
+	return buildOutOfZoneResult(p, 'geolocation');
+};
+
 export const zonasDisponibles = () => getZonas().features.map((f) => ({
 	id: f.properties.id,
 	nombre: f.properties.nombre,

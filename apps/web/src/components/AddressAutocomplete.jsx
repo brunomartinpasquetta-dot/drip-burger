@@ -73,7 +73,7 @@ const reverseGeocode = async (lat, lng) => {
 	} catch { return null; }
 };
 
-const AddressAutocomplete = ({ value, onChange, placeholder, error, className }) => {
+const AddressAutocomplete = ({ value, onChange, onCoords, placeholder, error, className }) => {
 	const [suggestions, setSuggestions] = useState([]);
 	const [open, setOpen] = useState(false);
 	const [loadingSug, setLoadingSug] = useState(false);
@@ -129,12 +129,22 @@ const AddressAutocomplete = ({ value, onChange, placeholder, error, className })
 		setLoadingGeo(true);
 		navigator.geolocation.getCurrentPosition(
 			async (pos) => {
-				const { latitude: lat, longitude: lng } = pos.coords;
+				const { latitude: lat, longitude: lng, accuracy } = pos.coords;
+				// Pasamos las coords EXACTAS al parent — el zonificador las
+				// usa directo sin pasar por el geocoder lossy.
+				if (typeof onCoords === 'function') onCoords({ lat, lng, accuracy });
 				const addr = await reverseGeocode(lat, lng);
 				if (addr) onChange(addr);
-				else onChange(`${lat.toFixed(5)},${lng.toFixed(5)}`);
+				else onChange(`Ubicación aprox. (${lat.toFixed(5)}, ${lng.toFixed(5)})`);
 				setLoadingGeo(false);
 				setOpen(false);
+				// Si la precisión es pobre (>500m) avisar al cliente para que
+				// edite/verifique. En desktop sin GPS suele ser >1000m via IP.
+				if (Number.isFinite(accuracy) && accuracy > 500) {
+					setTimeout(() => {
+						alert(`Te detecté con poca precisión (±${Math.round(accuracy)}m). Verificá la dirección o corregila a mano.`);
+					}, 100);
+				}
 			},
 			(err) => {
 				setLoadingGeo(false);
@@ -144,7 +154,10 @@ const AddressAutocomplete = ({ value, onChange, placeholder, error, className })
 					: err?.code === 3 ? 'tiempo agotado' : 'no disponible';
 				alert(`No pude obtener tu ubicación (${reason}). Probá tipear la dirección.`);
 			},
-			{ enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 },
+			// maximumAge: 0 fuerza un lookup fresco. Sin esto, el browser
+			// puede devolver una posición cacheada de hace minutos/horas
+			// (puede ser de otra red si el usuario cambió de WiFi).
+			{ enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
 		);
 	};
 

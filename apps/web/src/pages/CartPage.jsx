@@ -142,6 +142,11 @@ const CartPage = () => {
     forma_pago: 'Efectivo'
   });
 
+  // Coords del browser cuando el cliente usa "Mi ubicación". Si están seteadas,
+  // el zonificador las usa DIRECTO (más preciso que reverse-geocode +
+  // re-geocode). Se limpian apenas el cliente edita el texto a mano.
+  const [geoCoords, setGeoCoords] = useState(null);
+
   const {
     shippingPrice: shippingPriceRaw,
     zona,
@@ -154,7 +159,7 @@ const CartPage = () => {
     loading: shippingLoading,
     notFound: shippingNotFound,
     formatShipping,
-  } = useShippingPrice(formData.direccion);
+  } = useShippingPrice(formData.direccion, geoCoords);
 
   // Take Away: no se cobra envío; el zona/precios se ignoran.
   const shippingPrice = formData.takeAway ? 0 : shippingPriceRaw;
@@ -764,7 +769,14 @@ const CartPage = () => {
                     <Label htmlFor="direccion" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Dirección de Entrega</Label>
                     <AddressAutocomplete
                       value={formData.direccion}
-                      onChange={(v) => setFormData({ ...formData, direccion: v })}
+                      onChange={(v) => {
+                        // Si el cliente EDITA el texto manualmente, las geoCoords
+                        // del "Mi ubicación" ya no aplican (el texto y las coords
+                        // se desincronizan). Limpiamos para volver al geocoder.
+                        if (geoCoords) setGeoCoords(null);
+                        setFormData({ ...formData, direccion: v });
+                      }}
+                      onCoords={(c) => setGeoCoords(c)}
                       placeholder="Ej: San Martín 1550"
                       error={!!errors.direccion}
                     />
