@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ChevronDown, ChevronUp, Calendar, ArrowLeft, ShoppingBag, Wallet, TrendingUp, TrendingDown, Clock } from 'lucide-react';
 import { toast } from 'sonner';
-import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays, subMonths, parseISO } from 'date-fns';
+import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays, subWeeks, subMonths, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { FORMA_PAGO } from '@/lib/orderConstants';
 
@@ -33,6 +33,16 @@ const PRESETS = [
       from: toISODate(startOfWeek(new Date(), { weekStartsOn: 1 })),
       to: toISODate(endOfWeek(new Date(), { weekStartsOn: 1 })),
     }) },
+  { key: 'lastWeek', label: 'Última semana',
+    range: () => {
+      // Semana calendario anterior (lunes a domingo), no "últimos 7 días".
+      // Útil para reportes de cierre semanal cuando ya empezó la nueva.
+      const prev = subWeeks(new Date(), 1);
+      return {
+        from: toISODate(startOfWeek(prev, { weekStartsOn: 1 })),
+        to: toISODate(endOfWeek(prev, { weekStartsOn: 1 })),
+      };
+    } },
   { key: 'month', label: 'Este mes',
     range: () => ({ from: toISODate(startOfMonth(new Date())), to: toISODate(endOfMonth(new Date())) }) },
   { key: 'prevMonth', label: 'Mes pasado',
