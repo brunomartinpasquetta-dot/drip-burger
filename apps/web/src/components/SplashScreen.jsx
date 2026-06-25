@@ -27,7 +27,7 @@ const SplashScreen = ({ onComplete }) => {
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ duration: 0.5, ease: "easeOut" }}
-            src="https://horizons-cdn.hostinger.com/275f7838-3e15-483d-8eea-e9521d942912/cf52b8972fd221515cb37ac167cfd2a2.png"
+            src="/LogoDrip-2.png"
             alt="DRIP Logo"
             className="w-[200px] h-[200px] object-contain"
           />

@@ -34,7 +34,7 @@ const Header = () => {
             <div className="flex items-center gap-2 sm:gap-3">
               <Link to="/" className="flex items-center space-x-2">
                 <img
-                  src="https://horizons-cdn.hostinger.com/275f7838-3e15-483d-8eea-e9521d942912/cf52b8972fd221515cb37ac167cfd2a2.png"
+                  src="/LogoDrip-2.png"
                   alt="DRIP BURGER Logo"
                   className="w-10 h-10 sm:w-11 sm:h-11 object-contain"
                 />

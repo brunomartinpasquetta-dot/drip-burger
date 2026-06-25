@@ -7,7 +7,6 @@ import { useAuth } from '@/contexts/AuthContext.jsx';
 import Header from '@/components/Header.jsx';
 import AuthModal from '@/components/AuthModal.jsx';
 import ProductCard from '@/components/ProductCard.jsx';
-import BannerCarousel from '@/components/BannerCarousel.jsx';
 import { Button } from '@/components/ui/button';
 import {
   Carousel,
@@ -79,7 +78,7 @@ const HomePage = () => {
                 className="mb-8 md:mb-4 flex justify-center"
               >
                 <img
-                  src="https://horizons-cdn.hostinger.com/275f7838-3e15-483d-8eea-e9521d942912/cf52b8972fd221515cb37ac167cfd2a2.png"
+                  src="/LogoDrip-2.png"
                   alt="DRIP BURGER Mascot"
                   className="w-48 h-48 md:w-36 md:h-36 object-contain drop-shadow-[0_0_30px_rgba(245,168,0,0.3)]"
                 />
@@ -103,16 +102,6 @@ const HomePage = () => {
               >
                 No venimos a competir, venimos a marcar la diferencia, mordida a mordida.
               </motion.p>
-              
-              {/* Banner promocional — arriba del botón Hacer Pedido */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.25 }}
-                className="mb-6 md:mb-4"
-              >
-                <BannerCarousel />
-              </motion.div>
 
               <motion.div
                 initial={{ opacity: 0, y: 20 }}

@@ -22,11 +22,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Plus, Pencil, Trash2, Send, ChefHat, CheckCircle2, Banknote, MapPin, Phone, Clock, ArrowLeft, XCircle, Wallet, DollarSign, Loader2, Minus, TrendingUp, TrendingDown, BarChart3, Settings, Utensils, Printer, GripVertical, ChevronUp, ChevronDown, MessageSquare, Undo2, Image as ImageIcon } from 'lucide-react';
+import { Plus, Pencil, Trash2, Send, ChefHat, CheckCircle2, Banknote, MapPin, Phone, Clock, ArrowLeft, XCircle, Wallet, DollarSign, Loader2, Minus, TrendingUp, TrendingDown, BarChart3, Settings, Utensils, Printer, GripVertical, ChevronUp, ChevronDown, MessageSquare, Undo2 } from 'lucide-react';
 import { SettingsContent } from './SettingsPage.jsx';
 import { ReportsContent } from './SalesReportingPage.jsx';
 import MenuPreviewContent from './admin/MenuPreviewContent.jsx';
-import { BannersAdminContent } from './BannersAdminPage.jsx';
 import {
   printTicketDelivery,
   printKitchenOrder,
@@ -1331,7 +1330,6 @@ const AdminDashboard = () => {
     caja: 'Caja',
     menu: 'Menú',
     reportes: 'Reportes',
-    banners: 'Banners',
     config: 'Configuración',
   };
 
@@ -1963,9 +1961,6 @@ const AdminDashboard = () => {
                 </TabsTrigger>
                 <TabsTrigger value="reportes" className="font-bold uppercase tracking-wide py-1 px-2.5 text-[11px] data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:text-sm data-[state=active]:font-black data-[state=active]:px-3.5 data-[state=active]:py-1.5">
                   <BarChart3 className="mr-1 h-3 w-3" />Reportes
-                </TabsTrigger>
-                <TabsTrigger value="banners" className="font-bold uppercase tracking-wide py-1 px-2.5 text-[11px] data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:text-sm data-[state=active]:font-black data-[state=active]:px-3.5 data-[state=active]:py-1.5">
-                  <ImageIcon className="mr-1 h-3 w-3" />Banners
                 </TabsTrigger>
                 <TabsTrigger value="config" className="font-bold uppercase tracking-wide py-1 px-2.5 text-[11px] data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:text-sm data-[state=active]:font-black data-[state=active]:px-3.5 data-[state=active]:py-1.5">
                   <Settings className="mr-1 h-3 w-3" />Config
@@ -2658,15 +2653,6 @@ const AdminDashboard = () => {
                 <h2 className="text-2xl font-black uppercase tracking-wide">Reportes</h2>
               </div>
               <ReportsContent />
-            </TabsContent>
-
-            {/* ── TAB: BANNERS ── */}
-            <TabsContent value="banners" className="space-y-3">
-              <div className="flex items-center gap-3 mb-1">
-                <ImageIcon className="w-6 h-6 text-primary" />
-                <h2 className="text-2xl font-black uppercase tracking-wide">Banners</h2>
-              </div>
-              <BannersAdminContent />
             </TabsContent>
 
             {/* ── TAB: CONFIGURACIÓN ── */}
