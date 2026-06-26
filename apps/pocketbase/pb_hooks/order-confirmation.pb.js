@@ -89,12 +89,24 @@ onRecordCreate((e) => {
       const settings = settingsRecords && settingsRecords.length > 0 ? settingsRecords[0] : null;
       let maxMedallions = 20;
       try {
-        const perSlot = settings ? settings.get("slotCapacityPerSlot") : null;
+        let perSlot = settings ? settings.get("slotCapacityPerSlot") : null;
+        // En el runtime de hooks (goja), JSON fields a veces vienen como
+        // string crudo, a veces como types.JSONRaw wrapped, a veces como
+        // objeto JS. Intentamos parse si es string, y fallback robusto.
+        if (typeof perSlot === "string") {
+          try { perSlot = JSON.parse(perSlot); } catch (e) { perSlot = null; }
+        } else if (perSlot && typeof perSlot.toString === "function" && typeof perSlot[slot] === "undefined") {
+          // types.JSONRaw → stringify y reparse.
+          try { perSlot = JSON.parse(perSlot.toString()); } catch (e) { /* keep */ }
+        }
         if (perSlot && typeof perSlot === "object") {
           const v = Number(perSlot[slot]);
           if (isFinite(v) && v >= 0) maxMedallions = v;
         }
-      } catch (e) { /* usamos default 20 */ }
+        console.log("[slot-capacity-load] slot=" + slot + " perSlotType=" + (typeof perSlot) + " value=" + (perSlot ? JSON.stringify(perSlot) : "null") + " resolvedMax=" + maxMedallions);
+      } catch (e) {
+        console.log("[slot-capacity-load] error: " + (e && e.message ? e.message : e));
+      }
 
       // 2. Medallones del pedido entrante. Rechazar si hay valores negativos
       //    para evitar bypass de capacidad con pattyCount/quantity negativos.

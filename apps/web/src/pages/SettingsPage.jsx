@@ -323,10 +323,18 @@ const CapacidadPorTurnoCard = () => {
         if (recs.items.length > 0) {
           const r = recs.items[0];
           setSettingsId(r.id);
-          const ps = r.slotCapacityPerSlot;
+          // PB JSON field puede venir como objeto O como string serializado
+          // según la versión del SDK / cómo se haya guardado. Si es string,
+          // parsear; si es objeto, usar directo. Sin esto, todos los slots
+          // caían al default 20 y aparentaba "no se guarda".
+          let ps = r.slotCapacityPerSlot;
+          if (typeof ps === 'string') {
+            try { ps = JSON.parse(ps); } catch { ps = null; }
+          }
           const init = {};
           for (const slot of SLOT_ORDER) {
-            const v = Number(ps && ps[slot]);
+            const raw = ps && typeof ps === 'object' ? ps[slot] : undefined;
+            const v = Number(raw);
             init[slot] = Number.isFinite(v) && v >= 0 ? v : DEFAULT_PER_SLOT;
           }
           setPerSlot(init);
