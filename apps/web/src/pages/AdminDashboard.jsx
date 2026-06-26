@@ -1443,6 +1443,8 @@ const AdminDashboard = () => {
         const data = await res.json();
         if (cancelled) return;
         if (Array.isArray(data?.slots)) setSlotOccupancy(data.slots);
+        // Compat: maxMedallionsPerSlot global ya no se devuelve; cada slot trae
+        // su propio `max`. Conservamos el setState solo si alguien viejo lo lee.
         if (Number.isFinite(data?.maxMedallionsPerSlot)) {
           setMaxMedallionsPerSlot(data.maxMedallionsPerSlot);
         }
@@ -2002,7 +2004,7 @@ const AdminDashboard = () => {
               {/* Filtros inline: horarios/ocupación + estado */}
               <div className="space-y-2">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground w-20 shrink-0">Horarios/Ocupación</span>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground w-44 shrink-0">Horarios/Medallones</span>
                   <button
                     onClick={() => setFilters({ ...filters, timeSlot: 'all' })}
                     className={`px-3 py-1 rounded text-xs font-black uppercase tracking-wide border transition-colors ${
@@ -2042,7 +2044,7 @@ const AdminDashboard = () => {
                         {slot}
                         {info && (
                           <span className={`ml-1.5 ${active ? 'opacity-80' : 'opacity-90'}`}>
-                            ·{info.usedMedallions}/{maxMedallionsPerSlot}
+                            ·{info.usedMedallions}/{info.max ?? maxMedallionsPerSlot}
                           </span>
                         )}
                       </button>
@@ -2205,20 +2207,18 @@ const AdminDashboard = () => {
                               onClick={() => handleMarkPaid(order.id)}
                               disabled={!(cashPending || transferenciaPending) || isProcessing}
                               size="sm"
-                              className={`flex-1 h-10 shadow-sm text-[10px] font-black uppercase tracking-wide ${
+                              className={`flex-1 min-w-0 max-w-[150px] h-10 px-1 shadow-sm text-[9px] font-black uppercase tracking-wide ${
                                 (cashPending || transferenciaPending)
                                   ? 'bg-green-500 hover:bg-green-600 text-black border-0'
                                   : 'bg-green-500/20 text-green-400 border border-green-500/40 disabled:opacity-100'
                               }`}
                             >
-                              <Banknote className="mr-1 h-3 w-3" />
-                              {(cashPending || transferenciaPending)
-                                ? 'Cobrar'
-                                : (isMercadopago
-                                    ? '✓ Pagado MP'
-                                    : isTransferencia
-                                      ? '✓ Transf. cobrada'
-                                      : '✓ Cobrado')}
+                              <Banknote className="mr-1 h-3 w-3 shrink-0" />
+                              <span className="truncate">
+                                {(cashPending || transferenciaPending)
+                                  ? 'Cobrar'
+                                  : (isMercadopago ? '✓ Pago MP' : '✓ Pago')}
+                              </span>
                             </Button>
                           )}
 
@@ -2228,10 +2228,10 @@ const AdminDashboard = () => {
                               onClick={() => handleUpdateOrderStatus(order.id, ORDER_STATUS.COOKING)}
                               disabled={isProcessing}
                               size="sm"
-                              className="flex-1 h-10 bg-blue-500 hover:bg-blue-600 text-white text-[10px] font-black uppercase tracking-wide shadow-sm border-0"
+                              className="flex-1 min-w-0 max-w-[170px] h-10 px-1 bg-blue-500 hover:bg-blue-600 text-white text-[9px] font-black uppercase tracking-wide shadow-sm border-0"
                             >
-                              <ChefHat className="mr-1 h-3 w-3" />
-                              {isProcessing ? '...' : 'En preparación'}
+                              <ChefHat className="mr-1 h-3 w-3 shrink-0" />
+                              <span className="truncate">{isProcessing ? '...' : 'En preparación'}</span>
                             </Button>
                           )}
                           {/* EN PREPARACIÓN → botón MARCAR LISTO */}
@@ -2240,10 +2240,10 @@ const AdminDashboard = () => {
                               onClick={() => handleUpdateOrderStatus(order.id, ORDER_STATUS.READY)}
                               disabled={isProcessing}
                               size="sm"
-                              className="flex-1 h-10 bg-cyan-500 hover:bg-cyan-600 text-black text-[10px] font-black uppercase tracking-wide shadow-sm border-0"
+                              className="flex-1 min-w-0 max-w-[130px] h-10 px-1 bg-cyan-500 hover:bg-cyan-600 text-black text-[9px] font-black uppercase tracking-wide shadow-sm border-0"
                             >
-                              <CheckCircle2 className="mr-1 h-3 w-3" />
-                              {isProcessing ? '...' : 'Marcar listo'}
+                              <CheckCircle2 className="mr-1 h-3 w-3 shrink-0" />
+                              <span className="truncate">{isProcessing ? '...' : 'Listo'}</span>
                             </Button>
                           )}
                           {/* LISTO → Imprimir ticket + ENVIAR (cambia a SHIPPED + manda WhatsApp) */}
@@ -2266,20 +2266,22 @@ const AdminDashboard = () => {
                                 onClick={() => handlePrintTicket(order)}
                                 type="button"
                                 disabled={printBusy}
+                                title="Imprimir ticket"
                                 size="sm"
-                                className="flex-1 h-10 bg-white hover:bg-gray-100 text-black border-2 border-white shadow-md text-[10px] font-black uppercase tracking-wide"
+                                className="h-10 px-1.5 bg-white hover:bg-gray-100 text-black border-2 border-white shadow-md text-[8px] font-black uppercase tracking-tight flex flex-col items-center justify-center leading-none gap-0.5"
                               >
-                                <Printer className="mr-1 h-3 w-3" />
-                                {printBusy ? '...' : '🖨 Ticket'}
+                                <Printer className="h-3.5 w-3.5" />
+                                <span>{printBusy ? '...' : 'Ticket'}</span>
                               </Button>
                               <Button
                                 onClick={() => handleSendWhatsApp(order)}
                                 disabled={isProcessing}
+                                title="Enviar al cliente"
                                 size="sm"
-                                className="btn-primary flex-1 h-10 shadow-sm text-[10px] font-black uppercase tracking-wide"
+                                className="btn-primary h-10 px-1.5 shadow-sm text-[8px] font-black uppercase tracking-tight flex flex-col items-center justify-center leading-none gap-0.5"
                               >
-                                <Send className="mr-1 h-3 w-3" />
-                                {isProcessing ? '...' : 'Enviar'}
+                                <Send className="h-3.5 w-3.5" />
+                                <span>{isProcessing ? '...' : 'Env.'}</span>
                               </Button>
                             </>
                           )}
