@@ -7,6 +7,8 @@ import { useAuth } from '@/contexts/AuthContext.jsx';
 import Header from '@/components/Header.jsx';
 import AuthModal from '@/components/AuthModal.jsx';
 import ProductCard from '@/components/ProductCard.jsx';
+import ConfettiRain from '@/components/ConfettiRain.jsx';
+import HamburgerSun from '@/components/HamburgerSun.jsx';
 import { Button } from '@/components/ui/button';
 import {
   Carousel,
@@ -54,6 +56,10 @@ const HomePage = () => {
         <meta name="description" content="DRIP BURGER. No venimos a competir, venimos a marcar la diferencia, mordida a mordida." />
       </Helmet>
 
+      {/* Papelitos celeste/blanco estilo cancha argentina — se dispara al
+          montar el Home y dura 5s. Se auto-desmonta al terminar. */}
+      <ConfettiRain pieces={180} duration={6000} />
+
       <div className="min-h-screen bg-background selection:bg-primary selection:text-black flex flex-col">
         <Header />
 
@@ -71,28 +77,31 @@ const HomePage = () => {
 
           <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
             <div className="max-w-3xl mx-auto text-center">
+              {/* Logo mundialista — PNG con fondo transparente (los píxeles
+                  negros se pasaron a alpha=0 con PIL). El logo "flota" sobre
+                  el hero sin caja. */}
               <motion.div
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ duration: 0.5 }}
-                className="mb-8 md:mb-4 flex justify-center"
+                className="mb-8 md:mb-6 flex justify-center"
               >
-                <img
-                  src="/LogoDrip-2.png"
-                  alt="DRIP BURGER Mascot"
-                  className="w-48 h-48 md:w-36 md:h-36 object-contain drop-shadow-[0_0_30px_rgba(245,168,0,0.3)]"
-                />
+                {/* Wrapper del tamaño del logo — el sol se posiciona relativo
+                    al PNG, no al flex container (evita drift horizontal). */}
+                <div className="relative inline-block">
+                  <img
+                    src="/LogoDrip-Mundial.png?v=2"
+                    alt="DRIP BURGER"
+                    className="w-[280px] md:w-[380px] max-w-full h-auto object-contain drop-shadow-[0_4px_30px_rgba(117,170,219,0.35)] relative z-10"
+                  />
+                  {/* Sol de Mayo — en el hueco entre "DRIP" y "Burger" */}
+                  <HamburgerSun
+                    size={80}
+                    className="absolute z-20"
+                    style={{ top: '32%', left: '47%', transform: 'translate(-50%, -50%)' }}
+                  />
+                </div>
               </motion.div>
-
-              <motion.h1
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.1 }}
-                className="text-5xl md:text-6xl font-black uppercase tracking-tighter mb-6 md:mb-3"
-                style={{ color: 'var(--accent-orange)' }}
-              >
-                DRIP BURGER
-              </motion.h1>
 
               <motion.p
                 initial={{ opacity: 0, y: 20 }}
@@ -259,17 +268,54 @@ const HomePage = () => {
           </div>
         </section>
 
-        {/* Floating WhatsApp Button */}
-        <a
-          href="https://wa.me/5493425245092"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="fixed bottom-[80px] left-[16px] w-14 h-14 rounded-full bg-[#25D366] flex items-center justify-center shadow-lg hover:shadow-2xl hover:scale-110 transition-all duration-300 z-50"
-          aria-label="Contact us on WhatsApp"
-          title="Chat with us on WhatsApp"
-        >
-          <MessageCircle className="w-7 h-7 text-white" />
-        </a>
+        {/* Floating WhatsApp Button — con ícono oficial WA, pulse ring
+            animado (llama la atención sin ser invasivo) y tooltip
+            "Chatéanos" que aparece al hover en desktop. Posición
+            intacta (bottom-left). */}
+        <div className="fixed bottom-[80px] left-[16px] z-50 group">
+          {/* Pulse ring — dos ondas que crecen y desvanecen */}
+          <span
+            aria-hidden
+            className="absolute inset-0 rounded-full bg-[#25D366] opacity-40"
+            style={{ animation: 'wa-pulse 2.4s ease-out infinite' }}
+          />
+          <span
+            aria-hidden
+            className="absolute inset-0 rounded-full bg-[#25D366] opacity-30"
+            style={{ animation: 'wa-pulse 2.4s ease-out 1.2s infinite' }}
+          />
+
+          {/* Tooltip solo en desktop, aparece al hover */}
+          <span
+            aria-hidden
+            className="hidden md:block absolute left-full ml-3 top-1/2 -translate-y-1/2 whitespace-nowrap bg-[#0f172a] text-white text-xs font-black uppercase tracking-wider px-3 py-2 rounded-md shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none"
+          >
+            Chateanos
+            <span className="absolute right-full top-1/2 -translate-y-1/2 w-0 h-0 border-y-[6px] border-y-transparent border-r-[6px] border-r-[#0f172a]" />
+          </span>
+
+          <a
+            href="https://wa.me/5493425245092"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="relative flex items-center justify-center w-14 h-14 rounded-full bg-[#25D366] shadow-[0_4px_20px_rgba(37,211,102,0.5)] hover:shadow-[0_6px_24px_rgba(37,211,102,0.7)] hover:scale-110 active:scale-95 transition-all duration-200 ring-2 ring-white/20 hover:ring-white/40"
+            aria-label="Chateanos por WhatsApp"
+            title="Chateanos por WhatsApp"
+          >
+            {/* Ícono oficial WhatsApp (SVG path del logo real) */}
+            <svg viewBox="0 0 32 32" className="w-7 h-7 text-white fill-current" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+              <path d="M16.005 3.2c-7.088 0-12.85 5.762-12.85 12.85 0 2.263.593 4.472 1.72 6.418L3.2 28.8l6.483-1.7a12.826 12.826 0 006.322 1.61h.005c7.088 0 12.85-5.762 12.85-12.85 0-3.433-1.336-6.66-3.764-9.086A12.767 12.767 0 0016.005 3.2zm0 23.494h-.005a10.66 10.66 0 01-5.435-1.488l-.39-.232-4.036 1.058 1.076-3.933-.254-.404a10.647 10.647 0 01-1.63-5.645c0-5.887 4.79-10.677 10.678-10.677 2.851 0 5.532 1.11 7.548 3.127a10.605 10.605 0 013.126 7.55c0 5.888-4.79 10.678-10.678 10.678zm5.856-7.995c-.32-.16-1.897-.936-2.19-1.043-.294-.107-.507-.16-.72.16-.213.32-.827 1.043-1.014 1.256-.187.214-.374.24-.694.08-.32-.16-1.352-.499-2.577-1.59-.952-.848-1.595-1.896-1.782-2.216-.187-.32-.02-.492.14-.652.144-.144.32-.374.48-.561.16-.187.213-.32.32-.534.107-.213.053-.4-.027-.561-.08-.16-.72-1.734-.987-2.376-.26-.624-.523-.54-.72-.55-.187-.008-.4-.01-.614-.01a1.18 1.18 0 00-.854.4c-.294.32-1.121 1.096-1.121 2.67 0 1.576 1.148 3.098 1.308 3.311.16.213 2.259 3.449 5.472 4.836.765.33 1.36.527 1.826.674.767.244 1.466.21 2.019.128.616-.092 1.897-.775 2.164-1.523.267-.748.267-1.39.187-1.523-.08-.133-.293-.213-.614-.373z" />
+            </svg>
+          </a>
+
+          <style>{`
+            @keyframes wa-pulse {
+              0%   { transform: scale(1); opacity: 0.5; }
+              70%  { transform: scale(1.7); opacity: 0; }
+              100% { transform: scale(1.7); opacity: 0; }
+            }
+          `}</style>
+        </div>
 
         {/* Authentication Modal */}
         <AuthModal
