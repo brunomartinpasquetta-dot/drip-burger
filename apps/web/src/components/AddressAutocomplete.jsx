@@ -30,6 +30,27 @@ const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
 const NOMINATIM_REVERSE = 'https://nominatim.openstreetmap.org/reverse';
 const VIEWBOX = '-60.95,-31.94,-60.88,-32.00';
 
+// OSM trae la localidad en varios niveles redundantes: para Coronda devuelve
+// town="Municipio de Coronda" Y municipality="Coronda" como campos separados.
+// Saca el prefijo "Municipio de " para quedarnos con el nombre limpio.
+const cleanLocality = (s) => String(s || '').replace(/^municipio\s+de\s+/i, '').trim();
+
+// Une segmentos en "a, b, c" descartando vacíos y duplicados case-insensitive
+// (evita "Coronda, Coronda" cuando dos campos OSM colapsan al mismo nombre).
+const uniqJoin = (parts) => {
+	const out = [];
+	const seen = new Set();
+	for (const p of parts) {
+		const t = String(p || '').trim();
+		if (!t) continue;
+		const k = t.toLowerCase();
+		if (seen.has(k)) continue;
+		seen.add(k);
+		out.push(t);
+	}
+	return out.join(', ');
+};
+
 const fetchSuggestions = async (q, signal) => {
 	if (!q || q.trim().length < 3) return [];
 	const url = `${NOMINATIM}?q=${encodeURIComponent(q.trim() + ', Coronda, Santa Fe, Argentina')}&format=json&countrycodes=ar&limit=5&viewbox=${VIEWBOX}&bounded=1&addressdetails=1`;
@@ -39,19 +60,30 @@ const fetchSuggestions = async (q, signal) => {
 		const data = await res.json();
 		if (!Array.isArray(data)) return [];
 		return data.map((d) => {
-			// Etiqueta corta "Calle 1234, Barrio" (más legible que el display_name).
 			const a = d.address || {};
 			const calle = a.road || a.pedestrian || a.path || '';
 			const altura = a.house_number || '';
-			const barrio = a.suburb || a.neighbourhood || a.city_district || a.town || a.city || '';
-			const short = [
-				[calle, altura].filter(Boolean).join(' '),
-				barrio,
-			].filter(Boolean).join(', ');
+			const calleLinea = [calle, altura].filter(Boolean).join(' ');
+			// Localidad real (ciudad/pueblo/municipio) limpia. Preferimos esto por
+			// sobre el barrio: OSM mapea "Las Rosas" como neighbourhood cubriendo
+			// gran parte de Coronda, y mostrarlo como barrio principal confunde.
+			const localidad = cleanLocality(a.city || a.town || a.municipality);
+			const provincia = a.state || '';
+
+			// short (negrita): "Calle 1234, Coronda". Si no hubiera localidad,
+			// recién ahí caemos al barrio/suburb como último recurso.
+			const segundo = localidad || cleanLocality(a.suburb || a.neighbourhood || a.city_district);
+			const short = uniqJoin([calleLinea, segundo]);
+
+			// full (gris): texto limpio en vez del display_name crudo de Nominatim
+			// (que encadena "Las Rosas, Municipio de Coronda, Coronda, ..."):
+			// calle+altura, localidad, provincia — sin duplicados.
+			const full = uniqJoin([calleLinea, localidad, provincia]);
+
 			return {
 				key: d.place_id,
 				short: short || d.display_name,
-				full: d.display_name,
+				full: full || d.display_name,
 			};
 		});
 	} catch {

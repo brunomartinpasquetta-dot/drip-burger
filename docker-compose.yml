@@ -68,6 +68,15 @@ services:
     image: ghcr.io/muchobien/pocketbase:latest
     container_name: drip-pocketbase
     restart: unless-stopped
+    environment:
+      # El hook order-confirmation.pb.js calcula el "día de hoy" con
+      # new Date(year,month,date) → medianoche LOCAL del contenedor. Sin TZ
+      # corre en UTC y la medianoche cae a las 21:00 AR, partiendo la noche de
+      # servicio (slots 20:30–23:00) en dos días UTC: el gate sub-cuenta los
+      # medallones ya reservados y sobrevende (el 22:30 es el más afectado).
+      # Con TZ=AR la medianoche local = 00:00 AR = misma ventana que
+      # /api/slots/availability, y el conteo queda consistente.
+      - TZ=America/Argentina/Buenos_Aires
     ports:
       # 8091 en host porque 8090 lo usa sinatra-pocketbase (co-inquilino del VPS).
       # Internamente sigue siendo 8090; el API la accede por http://pocketbase:8090.

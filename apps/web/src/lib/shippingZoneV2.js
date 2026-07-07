@@ -16,10 +16,12 @@
 // que sí caigan en zona).
 //
 // Cache persistente en localStorage (sólo zone-matches). Bump CACHE_KEY a
-// v5 para invalidar entries stale del modo viejo (centro/alejada).
+// v6 al introducir zona_tipo (círculo/polígono): un mismo address puede
+// cambiar de tarifa según la geometría activa, así que hay que invalidar
+// los entries cacheados con el sub-modo viejo.
 //
 // Modos de cálculo (controlados desde settings via localCenterLoader):
-//   - 'zonas'     -> point-in-polygon contra features
+//   - 'zonas'     -> según zona_tipo: círculos (radio) o polígonos (PIP)
 //   - 'distancia' -> base + km × porKm, cutoff maxKm
 //   - 'fijo'     -> precio fijo (envio_base)
 // -----------------------------------------------------------------------------
@@ -54,7 +56,7 @@ const NOMINATIM_VIEWBOX = '-60.95,-31.94,-60.88,-32.00';
 // no entregamos ahí (notFound).
 const CORONDA_BBOX = { minLng: -61.00, minLat: -32.05, maxLng: -60.85, maxLat: -31.92 };
 
-const CACHE_KEY = 'dripburger:geocode:v5';
+const CACHE_KEY = 'dripburger:geocode:v6';
 const memCache = new Map();
 
 const loadCache = () => {
@@ -243,11 +245,16 @@ const findZone = (point) => {
 	const zonas = getZonas();
 	const features = Array.isArray(zonas.features) ? zonas.features : [];
 
+	// Sub-modo configurable (settings.zona_tipo): 'circulo' | 'poligono'.
+	// 'poligono' saltea los círculos y usa point-in-polygon directo; 'circulo'
+	// (default) mantiene la prioridad histórica de rangos por radio.
+	const usarPoligonos = shipping.zonaTipo === 'poligono';
+
 	// Círculos primero (modelo "Rangos personalizados" de OlaClick).
 	const circulos = features
 		.filter((f) => f.properties.tipo === 'circulo' && Number(f.properties.radioKm) > 0)
 		.sort((a, b) => Number(a.properties.radioKm) - Number(b.properties.radioKm));
-	if (circulos.length > 0 && Number.isFinite(center.lat) && Number.isFinite(center.lng)) {
+	if (!usarPoligonos && circulos.length > 0 && Number.isFinite(center.lat) && Number.isFinite(center.lng)) {
 		const dist = haversineKm(center, point);
 		for (const f of circulos) {
 			if (dist <= Number(f.properties.radioKm)) return f;
@@ -256,7 +263,7 @@ const findZone = (point) => {
 		return null;
 	}
 
-	// Polígonos como fallback / coexistencia.
+	// Polígonos: modo 'poligono' explícito, o fallback cuando no hay círculos.
 	for (const feature of features) {
 		if (feature.properties.tipo === 'circulo') continue;
 		const ring = feature?.geometry?.coordinates?.[0];

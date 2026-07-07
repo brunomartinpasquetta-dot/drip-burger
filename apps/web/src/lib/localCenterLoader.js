@@ -3,6 +3,7 @@ import pb from '@/lib/pocketbaseClient';
 // Portado de Sinatra (Fase F/F2 OlaClick). Lee de `settings`:
 //   - local_lat / local_lng        coords del local (centro para Haversine)
 //   - modo_envio                   'zonas' | 'distancia' | 'fijo'
+//   - zona_tipo                    sub-modo de 'zonas': 'circulo' | 'poligono'
 //   - envio_base                   precio base (modo 'distancia' y 'fijo')
 //   - envio_por_km                 precio por km (modo 'distancia')
 //   - envio_max_km                 cutoff km (modo 'distancia'); fuera → null
@@ -14,6 +15,7 @@ import pb from '@/lib/pocketbaseClient';
 const FALLBACK_CENTER = { lat: -31.97315, lng: -60.92054 }; // Juan de Garay 2189, Coronda
 const FALLBACK_SHIPPING = {
 	modo: 'zonas',
+	zonaTipo: 'circulo', // sub-modo de 'zonas': 'circulo' | 'poligono'
 	base: 0,
 	porKm: 0,
 	maxKm: 0,
@@ -44,6 +46,7 @@ export const loadLocalCenter = async () => {
 			const modo = String(r.modo_envio || '').trim().toLowerCase();
 			shippingCached = {
 				modo: ['distancia', 'fijo', 'zonas'].includes(modo) ? modo : 'zonas',
+					zonaTipo: String(r.zona_tipo || '').trim().toLowerCase() === 'poligono' ? 'poligono' : 'circulo',
 				base: Number.isFinite(Number(r.envio_base)) ? Number(r.envio_base) : 0,
 				porKm: Number.isFinite(Number(r.envio_por_km)) ? Number(r.envio_por_km) : 0,
 				maxKm: Number.isFinite(Number(r.envio_max_km)) ? Number(r.envio_max_km) : 0,

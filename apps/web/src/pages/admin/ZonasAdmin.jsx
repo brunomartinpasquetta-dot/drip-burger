@@ -6,6 +6,7 @@ import iconUrl from 'leaflet/dist/images/marker-icon.png';
 import shadowUrl from 'leaflet/dist/images/marker-shadow.png';
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
 import '@geoman-io/leaflet-geoman-free';
+import { Link } from 'react-router-dom';
 import pb from '@/lib/pocketbaseClient';
 import { loadZonas } from '@/lib/zonasLoader';
 import { loadLocalCenter, getLocalCenter } from '@/lib/localCenterLoader';
@@ -15,7 +16,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Loader2, Save, Trash2, MapPin, Eye, EyeOff, Plus, Edit3, X, Check, Home, Search, Target, Route, DollarSign } from 'lucide-react';
+import { Loader2, Save, Trash2, MapPin, Eye, EyeOff, Plus, Edit3, X, Check, Home, Search, Target, Route, DollarSign, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 
 delete L.Icon.Default.prototype._getIconUrl;
@@ -755,6 +756,8 @@ const ZonasAdmin = () => {
 	const [settingsRecord, setSettingsRecord] = useState(null);
 	const [modo, setModo] = useState('zonas'); // 'zonas' | 'distancia' | 'fijo'
 	const [savingModo, setSavingModo] = useState(false);
+	const [zonaTipo, setZonaTipo] = useState('circulo'); // sub-modo de 'zonas': 'circulo' | 'poligono'
+	const [savingTipo, setSavingTipo] = useState(false);
 
 	const fetchAll = async () => {
 		try {
@@ -767,6 +770,8 @@ const ZonasAdmin = () => {
 			setSettingsRecord(s);
 			const m = String(s?.modo_envio || 'zonas').trim().toLowerCase();
 			setModo(['distancia', 'fijo', 'zonas'].includes(m) ? m : 'zonas');
+			const zt = String(s?.zona_tipo || 'circulo').trim().toLowerCase();
+			setZonaTipo(zt === 'poligono' ? 'poligono' : 'circulo');
 		} catch (err) {
 			console.error('[ZonasAdmin] load failed:', err);
 			toast.error('No pude cargar las zonas');
@@ -800,6 +805,25 @@ const ZonasAdmin = () => {
 		} finally { setSavingModo(false); }
 	};
 
+	// Sub-modo dentro de 'zonas': qué geometría cobra (círculos vs polígonos).
+	const handleChangeTipo = async (nuevoTipo) => {
+		if (nuevoTipo === zonaTipo || !settingsRecord?.id) {
+			setZonaTipo(nuevoTipo);
+			return;
+		}
+		setSavingTipo(true);
+		try {
+			await pb.collection('settings').update(settingsRecord.id, {
+				zona_tipo: nuevoTipo,
+			}, { requestKey: null });
+			setZonaTipo(nuevoTipo);
+			await loadLocalCenter(); // refresca el cache que lee findZone
+			toast.success(`Cobro por ${nuevoTipo === 'poligono' ? 'polígonos' : 'círculos'}`);
+		} catch (err) {
+			toast.error('Error al cambiar el tipo de zona');
+		} finally { setSavingTipo(false); }
+	};
+
 	if (loading) return <Skeleton className="h-96 w-full rounded-xl" />;
 
 	const modos = [
@@ -810,6 +834,10 @@ const ZonasAdmin = () => {
 
 	return (
 		<div className="space-y-3">
+			{/* Volver al menú de configuración (mismo patrón que Banners/Reportes) */}
+			<Button asChild variant="outline" size="sm" className="border-border h-8 px-2 text-[11px]">
+				<Link to="/gestion/config"><ArrowLeft className="mr-1 h-3 w-3" />Volver</Link>
+			</Button>
 			{/* Selector de modo (siempre arriba) */}
 			<div className="bg-card border border-border rounded-xl p-3">
 				<p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">
@@ -846,22 +874,64 @@ const ZonasAdmin = () => {
 				<ModoFijoForm settingsRecord={settingsRecord} onSaved={fetchAll} />
 			)}
 			{modo === 'zonas' && (
-				<Tabs defaultValue="distancia" className="space-y-3">
-					<TabsList className="bg-card border border-border p-0.5 h-auto">
-						<TabsTrigger value="distancia" className="font-black uppercase tracking-wide py-1.5 px-3 text-[11px] data-[state=active]:bg-primary data-[state=active]:text-primary-foreground flex items-center gap-1.5">
-							<Target className="w-3 h-3" />Círculos (rangos)
-						</TabsTrigger>
-						<TabsTrigger value="poligono" className="font-black uppercase tracking-wide py-1.5 px-3 text-[11px] data-[state=active]:bg-primary data-[state=active]:text-primary-foreground flex items-center gap-1.5">
-							<MapPin className="w-3 h-3" />Polígonos (avanzado)
-						</TabsTrigger>
-					</TabsList>
-					<TabsContent value="distancia">
-						<ZonasPorDistancia zonas={zonas} onChanged={fetchAll} />
-					</TabsContent>
-					<TabsContent value="poligono">
-						<ZonasPorPoligono zonas={zonas} onChanged={fetchAll} />
-					</TabsContent>
-				</Tabs>
+				<>
+					{/* Selector de geometría activa para el cobro (círculos vs polígonos).
+					    Es el switch que faltaba: antes findZone priorizaba siempre los
+					    círculos y los polígonos quedaban inertes. */}
+					<div className="bg-card border border-border rounded-xl p-3">
+						<p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">
+							Geometría activa para el cobro
+						</p>
+						<div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+							{[
+								{ key: 'circulo', label: 'Círculos (rangos)', desc: 'Tarifa por radio desde el local', icon: Target },
+								{ key: 'poligono', label: 'Polígonos', desc: 'Tarifa por zona dibujada en el mapa', icon: MapPin },
+							].map(({ key, label, desc, icon: Icon }) => (
+								<button
+									key={key}
+									type="button"
+									disabled={savingTipo}
+									onClick={() => handleChangeTipo(key)}
+									className={`text-left rounded-lg border p-2.5 transition-all ${
+										zonaTipo === key
+											? 'border-primary bg-primary/10 ring-1 ring-primary'
+											: 'border-border bg-background hover:bg-muted/20'
+									} ${savingTipo ? 'opacity-60' : ''}`}
+								>
+									<div className="flex items-center gap-2">
+										<Icon className={`w-3.5 h-3.5 ${zonaTipo === key ? 'text-primary' : 'text-muted-foreground'}`} />
+										<span className={`text-[11px] font-black uppercase tracking-wide ${zonaTipo === key ? 'text-primary' : 'text-foreground'}`}>{label}</span>
+										{zonaTipo === key && (
+											<span className="ml-auto inline-flex items-center gap-0.5 text-[8px] font-black uppercase tracking-widest text-primary bg-primary/15 rounded px-1 py-0.5">
+												<Check className="w-2.5 h-2.5" />Activo
+											</span>
+										)}
+									</div>
+									<p className="text-[10px] text-muted-foreground mt-0.5 leading-snug">{desc}</p>
+								</button>
+							))}
+						</div>
+					</div>
+
+					<Tabs defaultValue={zonaTipo === 'poligono' ? 'poligono' : 'distancia'} className="space-y-3">
+						<TabsList className="bg-card border border-border p-0.5 h-auto">
+							<TabsTrigger value="distancia" className="font-black uppercase tracking-wide py-1.5 px-3 text-[11px] data-[state=active]:bg-primary data-[state=active]:text-primary-foreground flex items-center gap-1.5">
+								<Target className="w-3 h-3" />Círculos (rangos)
+								{zonaTipo === 'circulo' && <span className="text-[8px] text-primary bg-primary/15 rounded px-1 py-0.5">ACTIVO</span>}
+							</TabsTrigger>
+							<TabsTrigger value="poligono" className="font-black uppercase tracking-wide py-1.5 px-3 text-[11px] data-[state=active]:bg-primary data-[state=active]:text-primary-foreground flex items-center gap-1.5">
+								<MapPin className="w-3 h-3" />Polígonos (avanzado)
+								{zonaTipo === 'poligono' && <span className="text-[8px] text-primary bg-primary/15 rounded px-1 py-0.5">ACTIVO</span>}
+							</TabsTrigger>
+						</TabsList>
+						<TabsContent value="distancia">
+							<ZonasPorDistancia zonas={zonas} onChanged={fetchAll} />
+						</TabsContent>
+						<TabsContent value="poligono">
+							<ZonasPorPoligono zonas={zonas} onChanged={fetchAll} />
+						</TabsContent>
+					</Tabs>
+				</>
 			)}
 		</div>
 	);
