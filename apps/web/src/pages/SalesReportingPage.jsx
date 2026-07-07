@@ -74,6 +74,12 @@ const itemIncluyeFritas = (item) =>
 // Etiqueta única para la fila virtual de papas fritas en los rankings.
 const PAPAS_LABEL = 'PAPAS FRITAS (INCLUIDAS)';
 
+// PB almacena datetime con espacio ("YYYY-MM-DD HH:MM:SS.sssZ"), no con T.
+// Si pasamos `toISOString()` (formato con T) al filter, PB cae a comparación
+// lexicográfica y matchea registros fuera del rango — bug de "AYER muestra
+// pedidos de hoy". Convertimos T→espacio antes de mandar al filtro.
+const toPbDatetime = (d) => d.toISOString().replace('T', ' ');
+
 // Medallones de un pedido = suma de pattyCount * quantity por cada item
 // que es hamburguesa (hasMedallions != false). Nuggets y similares no
 // cuentan. Sirve para que el local proyecte compra de carne.
@@ -166,7 +172,7 @@ const ProductosTab = ({ dateRange }) => {
         const toObj = endOfDay(parseISO(dateRange.to));
         // Paso 1: detectar jornadas con actividad en el rango via pedidos
         // pagados creados dentro de él. Mismo approach que CierresTab.
-        const seedFilter = `paymentStatus='Pagado' && orderStatus != 'Cancelado' && created >= "${fromObj.toISOString()}" && created <= "${toObj.toISOString()}"`;
+        const seedFilter = `paymentStatus='Pagado' && orderStatus != 'Cancelado' && created >= "${toPbDatetime(fromObj)}" && created <= "${toPbDatetime(toObj)}"`;
         const seedOrders = await pb.collection('orders').getFullList({
           filter: seedFilter, requestKey: null, fields: 'jornadaId',
         });
@@ -675,7 +681,7 @@ const CierresTab = ({ dateRange }) => {
         //     igual (con badge "Abierta") para que vea sus ventas.
         // Approach: agarrar pedidos pagados en el rango → extraer jornadaId
         // únicos → buscar esas jornadas sin importar fecha ni estado.
-        const orderFilter = `paymentStatus='Pagado' && orderStatus != 'Cancelado' && created >= "${fromObj.toISOString()}" && created <= "${toObj.toISOString()}"`;
+        const orderFilter = `paymentStatus='Pagado' && orderStatus != 'Cancelado' && created >= "${toPbDatetime(fromObj)}" && created <= "${toPbDatetime(toObj)}"`;
         const paidOrders = await pb.collection('orders').getFullList({
           filter: orderFilter, requestKey: null, fields: 'jornadaId',
         });
