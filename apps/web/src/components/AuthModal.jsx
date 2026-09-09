@@ -62,17 +62,12 @@ const AuthModal = ({ isOpen, onClose, defaultTab = 'login' }) => {
     setIsLoading(true);
 
     try {
-      // 1. Check if email exists
-      const existing = await pb.collection('users').getList(1, 1, {
-        filter: `email="${regData.email}"`,
-        requestKey: null
-      });
-
-      if (existing.items.length > 0) {
-        throw new Error('Ya tenés una cuenta con ese email. Ingresá.');
-      }
-
-      // 2. Create user
+      // Crear user. NO chequeamos email duplicado por adelantado porque
+      // users.listRule = "id = @request.auth.id" → un usuario no logueado
+      // NUNCA ve los records (getList devuelve vacío aunque el email exista),
+      // por lo que el chequeo previo era código muerto y engañoso. Dejamos
+      // que PB rechace por su constraint unique y parseamos el error abajo
+      // para mostrar mensaje claro al cliente.
       const nombre_apellido = `${regData.nombre} ${regData.apellido}`.trim();
       await pb.collection('users').create({
         email: regData.email,
@@ -88,11 +83,29 @@ const AuthModal = ({ isOpen, onClose, defaultTab = 'login' }) => {
         role: 'CUSTOMER'
       }, { requestKey: null });
 
-      // 3. Auto-login después del registro, respetando el checkbox "Recordar mis datos"
+      // Auto-login después del registro, respetando el checkbox "Recordar mis datos"
       await login(regData.email, regData.password, regRememberMe);
       onClose();
     } catch (err) {
-      setError(err.message || 'Error al crear la cuenta');
+      // PB devuelve validaciones por-campo en err.data (o err.response.data.data).
+      // Traducimos las más comunes a mensajes claros; sin eso el usuario ve
+      // "Failed to create record." y no sabe qué corregir.
+      const details = err?.data?.data || err?.data || err?.response?.data?.data || {};
+      if (details.email?.code === 'validation_not_unique') {
+        setError('Ya existe una cuenta con ese email. Iniciá sesión.');
+      } else if (details.email?.code === 'validation_is_email') {
+        setError('Ingresá un email válido.');
+      } else if (details.password?.code === 'validation_min_text_constraint') {
+        setError('La contraseña debe tener al menos 8 caracteres.');
+      } else if (details.password || details.passwordConfirm) {
+        setError('La contraseña no cumple los requisitos.');
+      } else if (Object.keys(details).length > 0) {
+        // Otras validaciones: mostramos la primera en el idioma del campo
+        const [field, info] = Object.entries(details)[0];
+        setError(`${field}: ${info?.message || 'inválido'}`);
+      } else {
+        setError(err?.message || 'Error al crear la cuenta');
+      }
     } finally {
       setIsLoading(false);
     }

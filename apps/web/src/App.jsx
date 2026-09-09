@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { Route, Routes, BrowserRouter as Router, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext.jsx';
 import { CartProvider } from './contexts/CartContext.jsx';
@@ -11,13 +11,17 @@ import LoginPage from './pages/LoginPage.jsx';
 import CustomerMenuPage from './pages/CustomerMenuPage.jsx';
 import CartPage from './pages/CartPage.jsx';
 import ConfirmationPage from './pages/ConfirmationPage.jsx';
-import AdminDashboard from './pages/AdminDashboard.jsx';
-import SalesReportingPage from './pages/SalesReportingPage.jsx';
-import SettingsPage from './pages/SettingsPage.jsx';
-import EditOrdersPage from './pages/EditOrdersPage.jsx';
-import ZonasAdmin from './pages/admin/ZonasAdmin.jsx';
 import { PaymentSuccessPage, PaymentFailedPage, PaymentPendingPage } from './pages/PaymentReturnPages.jsx';
 import { Toaster } from '@/components/ui/sonner';
+
+// Rutas admin lazy-loaded — no bloquean el bundle inicial del cliente,
+// que es el 95% del tráfico. AdminDashboard trae recharts, ZonasAdmin
+// trae leaflet + geoman (>500KB combinados).
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard.jsx'));
+const SalesReportingPage = lazy(() => import('./pages/SalesReportingPage.jsx'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage.jsx'));
+const EditOrdersPage = lazy(() => import('./pages/EditOrdersPage.jsx'));
+const ZonasAdmin = lazy(() => import('./pages/admin/ZonasAdmin.jsx'));
 
 function App() {
   const [showSplash, setShowSplash] = useState(true);
@@ -48,6 +52,7 @@ function App() {
       <AuthProvider>
         <CartProvider>
           <ScrollToTop />
+          <Suspense fallback={<div className="min-h-screen bg-background" />}>
           <Routes>
             {/* Public Routes */}
             <Route path="/" element={<HomePage />} />
@@ -106,6 +111,7 @@ function App() {
             {/* Fallback */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          </Suspense>
           <Toaster theme="dark" />
         </CartProvider>
       </AuthProvider>

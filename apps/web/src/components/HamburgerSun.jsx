@@ -23,7 +23,7 @@ const HamburgerSun = ({ size = 100, className = '', style = {} }) => (
 		/>
 		{/* Sol de Mayo PNG — quieto, sin animación (no titila) */}
 		<img
-			src="/SolDeMayo.png?v=1"
+			src="/SolDeMayo.png?v=2"
 			alt=""
 			className="relative z-10 w-full h-full object-contain"
 			style={{

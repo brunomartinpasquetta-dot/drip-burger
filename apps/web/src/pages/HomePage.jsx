@@ -7,8 +7,6 @@ import { useAuth } from '@/contexts/AuthContext.jsx';
 import Header from '@/components/Header.jsx';
 import AuthModal from '@/components/AuthModal.jsx';
 import ProductCard from '@/components/ProductCard.jsx';
-import ConfettiRain from '@/components/ConfettiRain.jsx';
-import HamburgerSun from '@/components/HamburgerSun.jsx';
 import { Button } from '@/components/ui/button';
 import {
   Carousel,
@@ -56,10 +54,6 @@ const HomePage = () => {
         <meta name="description" content="DRIP BURGER. No venimos a competir, venimos a marcar la diferencia, mordida a mordida." />
       </Helmet>
 
-      {/* Papelitos celeste/blanco estilo cancha argentina — se dispara al
-          montar el Home y dura 5s. Se auto-desmonta al terminar. */}
-      <ConfettiRain pieces={180} duration={6000} />
-
       <div className="min-h-screen bg-background selection:bg-primary selection:text-black flex flex-col">
         <Header />
 
@@ -77,31 +71,28 @@ const HomePage = () => {
 
           <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
             <div className="max-w-3xl mx-auto text-center">
-              {/* Logo mundialista — PNG con fondo transparente (los píxeles
-                  negros se pasaron a alpha=0 con PIL). El logo "flota" sobre
-                  el hero sin caja. */}
               <motion.div
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ duration: 0.5 }}
-                className="mb-8 md:mb-6 flex justify-center"
+                className="mb-8 md:mb-4 flex justify-center"
               >
-                {/* Wrapper del tamaño del logo — el sol se posiciona relativo
-                    al PNG, no al flex container (evita drift horizontal). */}
-                <div className="relative inline-block">
-                  <img
-                    src="/LogoDrip-Mundial.png?v=2"
-                    alt="DRIP BURGER"
-                    className="w-[280px] md:w-[380px] max-w-full h-auto object-contain drop-shadow-[0_4px_30px_rgba(117,170,219,0.35)] relative z-10"
-                  />
-                  {/* Sol de Mayo — en el hueco entre "DRIP" y "Burger" */}
-                  <HamburgerSun
-                    size={80}
-                    className="absolute z-20"
-                    style={{ top: '32%', left: '47%', transform: 'translate(-50%, -50%)' }}
-                  />
-                </div>
+                <img
+                  src="/LogoDrip-2.png"
+                  alt="DRIP BURGER Mascot"
+                  className="w-48 h-48 md:w-36 md:h-36 object-contain drop-shadow-[0_0_30px_rgba(245,168,0,0.3)]"
+                />
               </motion.div>
+
+              <motion.h1
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.1 }}
+                className="text-5xl md:text-6xl font-black uppercase tracking-tighter mb-6 md:mb-3"
+                style={{ color: 'var(--accent-orange)' }}
+              >
+                DRIP BURGER
+              </motion.h1>
 
               <motion.p
                 initial={{ opacity: 0, y: 20 }}

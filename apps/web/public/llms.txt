@@ -1,6 +1,7 @@
 ## Pages
 - [- DRIP BURGER](/admindashboard): No description available
 - [¡Pedido confirmado! - DRIP BURGER](/paymentreturnpages): No description available
+- [Banners - DRIP BURGER](/bannersadmin): No description available
 - [Configuración - DRIP BURGER](/settings): No description available
 - [Confirmación - DRIP BURGER](/confirmation): No description available
 - [DRIP BURGER - Streetwear Burgers](/home): DRIP BURGER. No venimos a competir, venimos a marcar la diferencia, mordida a mordida.

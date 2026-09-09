@@ -13,7 +13,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import AuthModal from '@/components/AuthModal.jsx';
-import HamburgerSun from '@/components/HamburgerSun.jsx';
 
 const Header = () => {
   const { isAuthenticated, isAdmin, currentUser, logout } = useAuth();
@@ -34,19 +33,11 @@ const Header = () => {
           <div className="relative flex h-14 items-center justify-between">
             <div className="flex items-center gap-2 sm:gap-3">
               <Link to="/" className="flex items-center space-x-2">
-                <div className="relative shrink-0 inline-block">
-                  <img
-                    src="/LogoDrip-Mundial.png?v=2"
-                    alt="DRIP BURGER Logo"
-                    className="w-10 h-10 sm:w-11 sm:h-11 object-contain relative z-10"
-                  />
-                  {/* Sol de Mayo en el GAP entre DRIP y burger */}
-                  <HamburgerSun
-                    size={20}
-                    className="absolute z-20"
-                    style={{ top: '43%', left: '50%', transform: 'translate(-50%, -50%)' }}
-                  />
-                </div>
+                <img
+                  src="/LogoDrip-2.png"
+                  alt="DRIP BURGER Logo"
+                  className="w-10 h-10 sm:w-11 sm:h-11 object-contain"
+                />
                 <div className="hidden sm:flex flex-col">
                   <span className="text-base sm:text-lg font-black uppercase tracking-wider text-primary leading-tight">DRIP BURGER</span>
                   <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-widest text-secondary leading-tight">Streetwear Burgers</span>

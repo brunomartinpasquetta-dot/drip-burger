@@ -91,21 +91,29 @@ const fetchSuggestions = async (q, signal) => {
 	}
 };
 
+// Reverse geocode — devuelve solo el NOMBRE DE LA CALLE (sin altura).
+// Motivo: Nominatim usa interpolación para el house_number entre los
+// nodos que tiene mapeados de la manzana, y el resultado suele estar
+// desfasado por 5-10 números respecto de la altura real (ej: GPS a
+// Juan de Garay 1696 devuelve "1702"). Es más confiable tomar solo la
+// calle y que el cliente escriba la altura a mano (él la sabe mejor).
+//
+// Devuelve { street, hasStreet } donde hasStreet es true SOLO si Nominatim
+// resolvió una calle real. Si no, no hay nada utilizable.
 const reverseGeocode = async (lat, lng) => {
 	const url = `${NOMINATIM_REVERSE}?lat=${lat}&lon=${lng}&format=json&addressdetails=1`;
 	try {
 		const res = await fetch(url, { headers: { 'Accept-Language': 'es' } });
-		if (!res.ok) return null;
+		if (!res.ok) return { street: null, hasStreet: false };
 		const d = await res.json();
 		const a = d?.address || {};
 		const calle = a.road || a.pedestrian || a.path || '';
-		const altura = a.house_number || '';
-		const linea = [calle, altura].filter(Boolean).join(' ');
-		return linea || d?.display_name || `${lat.toFixed(5)},${lng.toFixed(5)}`;
-	} catch { return null; }
+		if (!calle) return { street: null, hasStreet: false };
+		return { street: calle, hasStreet: true };
+	} catch { return { street: null, hasStreet: false }; }
 };
 
-const AddressAutocomplete = ({ value, onChange, onCoords, placeholder, error, className }) => {
+const AddressAutocomplete = ({ value, onChange, onCoords, placeholder, error, className, hideMyLocation = false }) => {
 	const [suggestions, setSuggestions] = useState([]);
 	const [open, setOpen] = useState(false);
 	const [loadingSug, setLoadingSug] = useState(false);
@@ -162,21 +170,42 @@ const AddressAutocomplete = ({ value, onChange, onCoords, placeholder, error, cl
 		navigator.geolocation.getCurrentPosition(
 			async (pos) => {
 				const { latitude: lat, longitude: lng, accuracy } = pos.coords;
-				// Pasamos las coords EXACTAS al parent — el zonificador las
-				// usa directo sin pasar por el geocoder lossy.
-				if (typeof onCoords === 'function') onCoords({ lat, lng, accuracy });
-				const addr = await reverseGeocode(lat, lng);
-				if (addr) onChange(addr);
-				else onChange(`Ubicación aprox. (${lat.toFixed(5)}, ${lng.toFixed(5)})`);
 				setLoadingGeo(false);
-				setOpen(false);
-				// Si la precisión es pobre (>500m) avisar al cliente para que
-				// edite/verifique. En desktop sin GPS suele ser >1000m via IP.
-				if (Number.isFinite(accuracy) && accuracy > 500) {
-					setTimeout(() => {
-						alert(`Te detecté con poca precisión (±${Math.round(accuracy)}m). Verificá la dirección o corregila a mano.`);
-					}, 100);
+
+				// Gate 1: precisión pobre → no llenamos nada, avisamos y
+				// el cliente tipea a mano. 150m es el corte razonable
+				// (GPS puro suele estar en 5-30m; WiFi cae en 30-100m;
+				// IP-based supera fácil los 500m).
+				if (Number.isFinite(accuracy) && accuracy > 150) {
+					alert(`Tu GPS marca poca precisión (±${Math.round(accuracy)}m). No pudimos detectar tu dirección — escribila a mano así el repartidor sabe adónde ir.`);
+					setOpen(false);
+					return;
 				}
+
+				const { street, hasStreet } = await reverseGeocode(lat, lng);
+
+				// Gate 2: reverse-geocode no devolvió una calle real →
+				// NO llenamos el input con "Municipio de Coronda, ..." ni
+				// pasamos coords al parent. Si el input queda vacío, el
+				// pre-flight del checkout bloquea el submit y el cliente
+				// se ve forzado a tipear una dirección real.
+				if (!hasStreet) {
+					alert('El GPS no encontró tu dirección exacta. Escribí calle y altura a mano — el repartidor la necesita para llegar.');
+					setOpen(false);
+					return;
+				}
+
+				// OK: calle resuelta. NO usamos la altura de Nominatim
+				// (viene interpolada y suele estar 5-10 números off).
+				// Llenamos con "<calle> " (espacio final como hint) y le
+				// pedimos al cliente que agregue el número. NO pasamos
+				// coords al parent — la zonificación se hará re-geocodificando
+				// el texto final (con altura real), no las coords GPS.
+				onChange(`${street} `);
+				setOpen(false);
+				setTimeout(() => {
+					alert(`Detecté "${street}" pero el número puede no ser exacto. Completá la altura de tu casa a mano.`);
+				}, 100);
 			},
 			(err) => {
 				setLoadingGeo(false);
@@ -208,18 +237,20 @@ const AddressAutocomplete = ({ value, onChange, onCoords, placeholder, error, cl
 						error && 'border-destructive bg-destructive/10 focus-visible:ring-destructive',
 					)}
 				/>
-				<button
-					type="button"
-					onClick={handleUseMyLocation}
-					disabled={loadingGeo}
-					title="Usar mi ubicación actual"
-					className="shrink-0 h-10 px-3 rounded-md border border-border bg-background hover:bg-muted/20 text-foreground transition-colors flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider disabled:opacity-50"
-				>
-					{loadingGeo
-						? <Loader2 className="w-4 h-4 animate-spin" />
-						: <LocateFixed className="w-4 h-4" />}
-					<span className="hidden sm:inline">Mi ubicación</span>
-				</button>
+				{!hideMyLocation && (
+					<button
+						type="button"
+						onClick={handleUseMyLocation}
+						disabled={loadingGeo}
+						title="Usar mi ubicación actual"
+						className="shrink-0 h-10 px-3 rounded-md border border-border bg-background hover:bg-muted/20 text-foreground transition-colors flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider disabled:opacity-50"
+					>
+						{loadingGeo
+							? <Loader2 className="w-4 h-4 animate-spin" />
+							: <LocateFixed className="w-4 h-4" />}
+						<span className="hidden sm:inline">Mi ubicación</span>
+					</button>
+				)}
 			</div>
 			{showDropdown && (
 				<div className="absolute z-30 left-0 right-0 mt-1 bg-card border border-border rounded-md shadow-lg overflow-hidden max-h-72 overflow-y-auto">

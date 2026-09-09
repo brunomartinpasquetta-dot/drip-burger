@@ -779,6 +779,7 @@ const CartPage = () => {
                       onCoords={(c) => setGeoCoords(c)}
                       placeholder="Ej: San Martín 1550"
                       error={!!errors.direccion}
+                      hideMyLocation
                     />
                     {/* Estado del geocoding: cargando, fuera de cobertura, zona/distancia/fijo resuelto */}
                     {formData.direccion.trim() && shippingLoading && (
