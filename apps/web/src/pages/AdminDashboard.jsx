@@ -37,7 +37,7 @@ const formatPrice = (price) => {
   return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(price || 0);
 };
 
-const TIME_SLOTS = ['20:30', '21:00', '21:30', '22:00', '22:30', '23:00'];
+const TIME_SLOTS = ['20:30', '21:00', '21:30', '22:00', '22:30', '23:00', '23:30'];
 
 // Border color used as left accent on order cards — high-contrast for kitchen scanning
 const STATUS_BORDER_COLOR = {

@@ -19,7 +19,7 @@ import {
 import { ArrowLeft, XCircle, Clock, Phone, Search, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 
-const TIME_SLOTS = ['20:30', '21:00', '21:30', '22:00', '22:30', '23:00'];
+const TIME_SLOTS = ['20:30', '21:00', '21:30', '22:00', '22:30', '23:00', '23:30'];
 
 const formatPrice = (price) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(price || 0);

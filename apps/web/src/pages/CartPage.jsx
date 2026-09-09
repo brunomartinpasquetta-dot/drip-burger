@@ -172,7 +172,7 @@ const CartPage = () => {
   const [slotAvailability, setSlotAvailability] = useState([]);
   const [availabilityLoading, setAvailabilityLoading] = useState(true);
 
-  const timeSlots = ['20:30', '21:00', '21:30', '22:00', '22:30', '23:00'];
+  const timeSlots = ['20:30', '21:00', '21:30', '22:00', '22:30', '23:00', '23:30'];
 
   // Cierre anticipado: un slot deja de estar disponible para nuevos pedidos
   // 10 min antes de su horario (ej: 20:30 cierra a las 20:20). Reduce el riesgo

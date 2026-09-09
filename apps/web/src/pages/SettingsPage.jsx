@@ -305,7 +305,7 @@ const OperacionCard = () => {
 //  horario de envío. No hay global: cada slot tiene su propio máximo.
 //  Si un slot queda en 0 explícitamente, ese horario queda bloqueado.
 // ══════════════════════════════════════════════════════════════════
-const SLOT_ORDER = ['20:30', '21:00', '21:30', '22:00', '22:30', '23:00'];
+const SLOT_ORDER = ['20:30', '21:00', '21:30', '22:00', '22:30', '23:00', '23:30'];
 const DEFAULT_PER_SLOT = 20;
 
 const CapacidadPorTurnoCard = () => {
